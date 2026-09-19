@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f7f3">
+  <meta name="description" content="Hao Ren is a compiler engineer at NVIDIA working on NVVM and the CUDA compiler middle-end, with open-source contributions to LLVM and IREE.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Hao Ren · AI, SW + HW">
+  <meta property="og:description" content="AI, software, and hardware — compilers and systems. Compiler engineer at NVIDIA in Santa Clara.">
+  <meta property="og:url" content="https://smart-moomoo.github.io/">
+  <title>Hao Ren · AI, SW + HW</title>
+  <link rel="canonical" href="https://smart-moomoo.github.io/">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="page">
+    <header class="site-header">
+      <a class="wordmark" id="name" href="#about" aria-label="Hao Ren, home">Hao Ren</a>
+      <nav aria-label="Main navigation">
+        <a href="#about">About</a>
+        <a href="#publications">Publications</a>
+        <a href="#open-source">Open source</a>
+        <a href="#experience">Experience</a>
+        <a href="#education">Education</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="about" aria-labelledby="name">
+        <div class="hero-copy">
+          <div class="profile-heading">
+            <p class="role"><a href="https://www.nvidia.com/">NVIDIA</a> - CUDA Compiler - NVVM Core</p>
+            <div class="profile-details">
+              <div class="profile-links" aria-label="Online profiles">
+                <a href="https://www.linkedin.com/in/hao-ren-b7b216244/">LinkedIn <span aria-hidden="true">↗</span></a>
+                <a href="https://github.com/smart-moomoo">GitHub <span aria-hidden="true">↗</span></a>
+                <a href="https://github.com/nvidia-moomoo">Work GitHub <span aria-hidden="true">↗</span></a>
+              </div>
+              <p class="location"><svg aria-hidden="true" width="14" height="16" viewBox="0 0 14 16" fill="none"><path d="M12 6c0 4-5 8-5 8S2 10 2 6a5 5 0 0 1 10 0Z" stroke="currentColor"/><circle cx="7" cy="6" r="1.5" stroke="currentColor"/></svg> Santa Clara, California</p>
+            </div>
+          </div>
+          <p class="intro">My interests span <strong>AI, SW + HW (compiler, system)</strong>. My research includes <a href="#approxmlir-title">ApproxMLIR</a>, an accuracy-aware compiler for compound AI systems, and <a href="#triage-title">Intelligent Triage</a>, which uses LLM-extracted reasoning to make cloud incident triage interpretable. I also contributed to <a href="#bytefs-title">ByteFS</a>, co-designing file-system and SSD firmware support for CXL-based memory-semantic storage. I’ve also trained agent harnesses for software infrastructure development, helping land contributions to <a href="https://github.com/llvm/llvm-project">LLVM</a> and <a href="https://github.com/iree-org/iree">IREE</a> in a systematic SoL way.</p>
+        </div>
+      </section>
+
+      <section class="content-section" id="publications" aria-labelledby="publications-title">
+        <div class="section-heading"><h2 id="publications-title">Publications</h2></div>
+        <ol class="publication-list">
+          <li>
+            <article aria-labelledby="approxmlir-title">
+              <h3 id="approxmlir-title"><a href="https://proceedings.mlsys.org/paper_files/paper/2026/hash/bbd3e0e9913824bbc46e7e87b11461ae-Abstract-Conference.html">ApproxMLIR: Accuracy-Aware Compiler for Compound ML System</a></h3>
+              <p class="publication-authors"><strong>Hao Ren</strong>, Yi Mu, Sasa Misailovic</p>
+              <p class="publication-venue"><strong>MLSys 2026</strong> · Proceedings of Machine Learning and Systems, Vol. 8, pp. 610–625</p>
+              <p class="publication-summary">An MLIR-based compilation toolchain for exploring accuracy–performance tradeoffs across ML and non-ML components in compound AI systems.</p>
+              <div class="publication-links" aria-label="ApproxMLIR resources">
+                <a href="https://proceedings.mlsys.org/paper_files/paper/2026/file/bbd3e0e9913824bbc46e7e87b11461ae-Paper-Conference.pdf">Paper (PDF)</a>
+                <a href="https://github.com/uiuc-arc/approxMLIR">Code</a>
+                <a href="./citations/approxmlir.bib" download>BibTeX</a>
+              </div>
+            </article>
+          </li>
+          <li>
+            <article aria-labelledby="triage-title">
+              <h3 id="triage-title"><a href="https://doi.org/10.1145/3786583.3786887">Intelligent Triage: Interpretable Incident Triage Workflow using LLM Extracted Triage Reasoning</a></h3>
+              <p class="publication-authors">Jianing Liu<sup>*</sup>, <strong>Hao Ren<sup>*</sup></strong>, Yu Kang, Minghua Ma, Fangkai Yang, Yong Xu, Xin Gao, Meng Zhang, Hongbin Wang, Xuedong Gao, Qingwei Lin, Yingnong Dang, Saravan Rajmohan, Dongmei Zhang, Qi Zhang, Chetan Bansal, Yangfan Zhou</p>
+              <p class="publication-note">* Co-first authors</p>
+              <p class="publication-venue"><strong>ICSE-SEIP 2026</strong> · Software Engineering in Practice, pp. 451–462</p>
+              <p class="publication-summary">An interpretable incident-triage workflow that extracts reusable reasoning rules with LLMs, deployed in Microsoft Azure services.</p>
+              <div class="publication-links" aria-label="Intelligent Triage resources">
+                <a href="https://doi.org/10.1145/3786583.3786887">Paper</a>
+                <a href="https://conf.researchr.org/details/icse-2026/icse-2026-software-engineering-in-practice/34/Intelligent-Triage-Interpretable-Incident-Triage-Workflow-using-LLM-Extracted-Triage">Conference</a>
+                <a href="./citations/intelligent-triage.bib" download>BibTeX</a>
+              </div>
+            </article>
+          </li>
+          <li>
+            <article aria-labelledby="bytefs-title">
+              <h3 id="bytefs-title"><a href="https://doi.org/10.1145/3669940.3707250">ByteFS: System Support for (CXL-based) Memory-Semantic Solid-State Drives</a></h3>
+              <p class="publication-authors">Shaobo Li<sup>*</sup>, Yirui (Eric) Zhou<sup>*</sup>, <strong>Hao Ren</strong>, Jian Huang</p>
+              <p class="publication-note">* Co-first authors</p>
+              <p class="publication-venue"><strong>ASPLOS 2025</strong> · Vol. 1, pp. 116–132</p>
+              <p class="publication-summary">A file system and SSD firmware co-design that supports both byte- and block-granular access to memory-semantic SSDs.</p>
+              <div class="publication-links" aria-label="ByteFS resources">
+                <a href="https://platformxlab.github.io/papers/bytefs-asplos25.pdf">Paper (PDF)</a>
+                <a href="https://github.com/platformxlab/bytefs">Code</a>
+                <a href="https://arxiv.org/abs/2501.04993">arXiv</a>
+                <a href="./citations/bytefs.bib" download>BibTeX</a>
+              </div>
+            </article>
+          </li>
+        </ol>
+      </section>
+
+      <section class="content-section" id="open-source" aria-labelledby="opensource-title">
+        <div class="section-heading"><h2 id="opensource-title">Open-source contributions</h2></div>
+        <div class="project-grid">
+          <article class="project"><h3><a href="https://github.com/llvm/llvm-project">LLVM</a></h3><p>Contributions to LLVM, including NVPTX code generation and compiler transformations.</p><div class="project-footer"><a href="https://github.com/llvm/llvm-project">Repository <span aria-hidden="true">↗</span></a></div></article>
+          <article class="project"><h3><a href="https://github.com/iree-org/iree">IREE</a></h3><p>Open-source contributions to IREE, a compiler and runtime for machine learning workloads.</p><div class="project-footer"><a href="https://github.com/iree-org/iree">Repository <span aria-hidden="true">↗</span></a></div></article>
+        </div>
+      </section>
+
+      <section class="content-section" id="experience" aria-labelledby="experience-title">
+        <div class="section-heading"><h2 id="experience-title">Experience</h2></div>
+        <div class="timeline-row">
+          <div class="time-label">Jun 2026 — Present</div>
+          <div class="timeline-content">
+            <h3>Software Engineer · NVIDIA</h3>
+            <p class="item-meta">Full-time · Santa Clara, California</p>
+            <p>Developing the CUDA compiler middle-end / NVVM.</p>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-label">Aug 2024 — May 2026</div>
+          <div class="timeline-content">
+            <h3>Master’s research · University of Illinois Urbana-Champaign</h3>
+            <p class="item-meta">Advisor: <a href="https://misailo.cs.illinois.edu/">Sasa Misailovic</a></p>
+            <p>Led approximate computing for compound AI systems, developing ApproxMLIR (MLSys 2026).</p>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-label">May — Aug 2025</div>
+          <div class="timeline-content">
+            <h3>Compiler Engineer · NVIDIA</h3>
+            <p class="item-meta">Internship · Santa Clara, California</p>
+            <p>Worked on LLVM infrastructure, mentored by Justin Holewinski and Gautam Chakrabarti.</p>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-label">Oct 2023 — Aug 2024</div>
+          <div class="timeline-content">
+            <h3>Research Development Software Engineer · Microsoft</h3>
+            <p class="item-meta">Internship · Shanghai, China · Mentor: Yu Kang</p>
+            <p>Led MLOps research and engineering on Intelligent Triage (ICSE-SEIP 2026).</p>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-label">Nov 2022 — Aug 2023</div>
+          <div class="timeline-content">
+            <h3>Undergraduate research · University of Illinois Urbana-Champaign</h3>
+            <p class="item-meta">Urbana, Illinois · Advisor: <a href="https://platformxlab.github.io/">Jian Huang</a></p>
+            <p>Contributed to the design and engineering of a CXL-based file system, ByteFS (ASPLOS 2025).</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-section" id="education" aria-labelledby="education-title">
+        <div class="section-heading"><h2 id="education-title">Education</h2></div>
+        <div class="timeline-row">
+          <div class="time-label">Aug 2024 — May 2026</div>
+          <div class="timeline-content">
+            <h3>University of Illinois Urbana-Champaign</h3>
+            <p>M.S. in Electrical and Computer Engineering · Focus: compilers</p>
+            <p class="item-meta">Advisor: Sasa Misailovic</p>
+            <p class="thesis">Thesis: <a href="https://misailo.cs.illinois.edu/papers/hao-ren-thesis.pdf">Accuracy-Aware Compilation for Compound AI Systems with ApproxMLIR</a></p>
+            <p class="item-meta">Teaching assistant for <a href="https://courses.grainger.illinois.edu/ece391/fa2024/overview.html">ECE 391: Computer Systems Engineering</a></p>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-label">2020 — 2024</div>
+          <div class="timeline-content">
+            <h3>Zhejiang University</h3>
+            <p>Electrical Engineering · ZJU–UIUC Institute (ZJUI)</p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer><span>© <span id="year">2026</span> Hao Ren</span><a href="https://www.linkedin.com/in/hao-ren-b7b216244/">LinkedIn ↗</a><a href="#about">Back to top <span aria-hidden="true">↑</span></a></footer>
+  </div>
+  <script src="./script.js" defer></script>
+</body>
+</html>
