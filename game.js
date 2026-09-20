@@ -300,7 +300,12 @@
   canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); flap(); });
   overlay.addEventListener('pointerdown', (e) => { e.preventDefault(); flap(); });
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space') { e.preventDefault(); flap(); }
+    if (e.code !== 'Space') return;
+    // On the merged Play page, don't flap the bird from a Space press
+    // while the Farm tab is the one actually showing.
+    if (window.PlayActiveView && window.PlayActiveView !== 'game') return;
+    e.preventDefault();
+    flap();
   });
 
   requestAnimationFrame(loop);

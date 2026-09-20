@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f7f3">
+  <meta name="description" content="Two small games on Hao Ren's website: a Jumping Bird arcade game and a relaxing Cozy Farm sim that share one coin wallet.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Play · Hao Ren">
+  <meta property="og:description" content="Jumping Bird and Cozy Farm — two small games sharing one coin wallet.">
+  <meta property="og:url" content="https://smart-moomoo.github.io/play.html">
+  <title>Play · Hao Ren</title>
+  <link rel="canonical" href="https://smart-moomoo.github.io/play.html">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./game.css">
+  <link rel="stylesheet" href="./farm.css">
+  <link rel="stylesheet" href="./play.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="page">
+    <header class="site-header">
+      <a class="wordmark" href="./index.html" aria-label="Hao Ren, home">Hao Ren</a>
+      <nav aria-label="Main navigation">
+        <a href="./index.html#about">About</a>
+        <a href="./index.html#publications">Publications</a>
+        <a href="./index.html#open-source">Open source</a>
+        <a href="./index.html#experience">Experience</a>
+        <a href="./index.html#education">Education</a>
+        <a href="./index.html#guestbook">Messages</a>
+        <a href="./play.html" aria-current="location">Play</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-label="Games">
+        <div class="play-switcher" role="tablist" aria-label="Choose a game">
+          <button type="button" class="play-tab" id="tab-game" role="tab" aria-selected="true" aria-controls="view-game">🐦 Jumping Bird</button>
+          <button type="button" class="play-tab" id="tab-farm" role="tab" aria-selected="false" aria-controls="view-farm">🌾 Cozy Farm</button>
+        </div>
+
+        <div class="play-view" id="view-game" role="tabpanel" aria-labelledby="tab-game">
+          <div class="game-stage">
+            <canvas id="game-canvas" width="360" height="540" role="img" aria-label="Jumping bird game canvas"></canvas>
+            <div class="game-overlay" id="game-overlay">
+              <p class="game-overlay-title">Jumping Bird</p>
+              <p class="game-overlay-sub">Click, tap, or press Space to start</p>
+              <p class="game-overlay-desc">Fly close to the edges for bonus points, chain three close calls for a streak bonus, and grab the gold orb for a one-hit shield. Speed, gaps, and drifting pipes get harder as you score. Your score becomes coins for your farm.</p>
+            </div>
+          </div>
+          <div class="game-scoreboard">
+            <span>Score <strong id="game-score">0</strong></span>
+            <span>Best <strong id="game-best">0</strong></span>
+            <span>Shield <strong id="game-shield">0</strong></span>
+            <span title="Shared with your farm">Farm coins <strong id="game-coins">0</strong></span>
+          </div>
+        </div>
+
+        <div class="play-view" id="view-farm" role="tabpanel" aria-labelledby="tab-farm" hidden>
+          <div class="farm-topbar">
+            <div class="farm-stat" title="Shared with your Jumping Bird score"><span aria-hidden="true">🪙</span><strong id="farm-coins">0</strong></div>
+            <div class="farm-stat farm-stat-muted"><span aria-hidden="true">🌾</span><span id="farm-harvest-count">0</span> collected</div>
+            <button type="button" class="farm-reset" id="farm-reset">Reset farm</button>
+          </div>
+
+          <div class="farm-board">
+            <div class="farm-panel">
+              <h2 class="farm-panel-title">Garden</h2>
+              <div class="garden-scene" id="garden-scene" role="list" aria-label="Garden plots"></div>
+            </div>
+            <div class="farm-panel">
+              <h2 class="farm-panel-title">Pasture</h2>
+              <div class="pasture-scene" id="pasture-scene" role="list" aria-label="Animal pasture"></div>
+            </div>
+          </div>
+
+          <div class="farm-tray" id="farm-tray" hidden>
+            <div class="farm-tray-header">
+              <span id="farm-tray-title">Choose</span>
+              <button type="button" class="farm-tray-close" id="farm-tray-close" aria-label="Close">✕</button>
+            </div>
+            <div class="farm-tray-options" id="farm-tray-options"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer><span>© <span id="year">2026</span> Hao Ren</span><a href="https://www.linkedin.com/in/hao-ren-b7b216244/">LinkedIn ↗</a><a href="./index.html#about">Back to profile <span aria-hidden="true">↑</span></a></footer>
+  </div>
+  <script src="./script.js" defer></script>
+  <script src="./arcade.js" defer></script>
+  <script src="./play.js" defer></script>
+  <script src="./game.js" defer></script>
+  <script src="./farm.js" defer></script>
+</body>
+</html>

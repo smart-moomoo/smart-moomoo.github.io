@@ -34,38 +34,128 @@
   margin: 0 0 10px;
 }
 
-.farm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-
-.farm-cell {
-  aspect-ratio: 1;
+/* --- scenes: a garden bed and a pasture field, not a grid --- */
+.garden-scene,
+.pasture-scene {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  min-height: 240px;
   border: 1px solid var(--line);
-  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 60% 40% at 25% 12%, rgba(255, 255, 255, .35), transparent 60%),
+    linear-gradient(180deg, #ecdfba 0%, #ddc797 100%);
+}
+.pasture-scene {
+  background:
+    radial-gradient(ellipse 60% 40% at 75% 10%, rgba(255, 255, 255, .35), transparent 60%),
+    linear-gradient(180deg, #dcefc3 0%, #b9dd93 100%);
+}
+
+/* --- garden plots: fixed, loosely scattered spots; plants sway in place --- */
+.plot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 6px;
-  font-family: var(--sans);
+  gap: 2px;
+  border: none;
+  background: transparent;
+  padding: 0;
   cursor: pointer;
+  font-family: var(--sans);
   color: var(--ink);
 }
-.farm-cell:disabled { cursor: default; }
-.farm-cell:hover:not(:disabled) { border-color: var(--accent); }
-.farm-cell-emoji { font-size: 26px; line-height: 1; }
-.farm-cell-label { font-size: 10.5px; color: var(--muted); text-align: center; line-height: 1.3; }
-.farm-cell.is-ready { background: #eef6ee; border-color: var(--accent); animation: farm-pulse 1.4s ease-in-out infinite; }
-.farm-cell.is-ready .farm-cell-label { color: var(--accent); font-weight: 600; }
-.farm-cell.is-locked { background: var(--paper); }
-.farm-cell.is-empty .farm-cell-emoji { color: var(--line); font-size: 22px; }
-.farm-cell-bar { width: 78%; height: 4px; background: var(--line); overflow: hidden; }
-.farm-cell-bar > span { display: block; height: 100%; background: var(--accent); }
+.plot:disabled { cursor: default; }
+.plot-emoji { display: inline-block; font-size: 26px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .18)); }
+.plot-label {
+  font-size: 9.5px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, .82);
+  padding: 1px 5px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.plot-bar { width: 34px; height: 3px; background: rgba(255, 255, 255, .65); border-radius: 2px; overflow: hidden; margin-top: 1px; }
+.plot-bar > span { display: block; height: 100%; background: var(--accent); }
 
-@keyframes farm-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(40, 102, 90, .28); }
-  50% { box-shadow: 0 0 0 6px rgba(40, 102, 90, 0); }
+.plot.is-locked .plot-emoji { opacity: .45; font-size: 20px; }
+.plot.is-empty .plot-emoji { font-size: 18px; opacity: .5; }
+.plot.is-empty:hover .plot-emoji { opacity: .85; }
+.plot.is-growing .plot-emoji {
+  animation: plant-sway 4.5s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * .35s);
+  transform-origin: 50% 85%;
+}
+.plot.is-ready .plot-emoji {
+  animation: plant-ready-pulse 1.3s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * .2s);
+}
+.plot.is-ready .plot-label { color: var(--accent); font-weight: 700; }
+
+@keyframes plant-sway {
+  0%, 100% { transform: rotate(-7deg); }
+  50% { transform: rotate(7deg); }
+}
+@keyframes plant-ready-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.18); }
 }
 
+/* --- pasture: locked/empty pens sit at a fixed gate; a bought animal
+   wanders the open field, gliding to a new spot every few seconds --- */
+.pen-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  transition: left 3.2s ease-in-out, top 3.2s ease-in-out;
+  width: 58px;
+  height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--sans);
+  color: var(--ink);
+}
+.pen-slot:disabled { cursor: default; }
+.pen-slot-emoji { display: inline-block; font-size: 27px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .2)); }
+.pen-slot-label {
+  font-size: 9.5px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, .85);
+  padding: 1px 5px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.pen-slot-bar { width: 34px; height: 3px; background: rgba(255, 255, 255, .65); border-radius: 2px; overflow: hidden; margin-top: 1px; }
+.pen-slot-bar > span { display: block; height: 100%; background: var(--accent); }
+
+.pen-slot.is-locked,
+.pen-slot.is-empty { transition: none; }
+.pen-slot.is-locked .pen-slot-emoji { opacity: .45; font-size: 20px; }
+.pen-slot.is-empty .pen-slot-emoji { font-size: 18px; opacity: .5; }
+.pen-slot.is-empty:hover .pen-slot-emoji { opacity: .85; }
+.pen-slot.is-waiting .pen-slot-emoji { animation: animal-bob 2.6s ease-in-out infinite; }
+.pen-slot.is-ready .pen-slot-emoji { animation: animal-bob 1s ease-in-out infinite; }
+.pen-slot.is-ready .pen-slot-label { color: var(--accent); font-weight: 700; }
+
+@keyframes animal-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* --- shared buy tray (unchanged) --- */
 .farm-tray {
   margin-top: 24px;
   border: 1px solid var(--accent);
@@ -105,6 +195,13 @@
 .farm-tray-option-meta { font-size: 11px; color: var(--muted); }
 
 @media (max-width: 480px) {
-  .farm-cell-emoji { font-size: 22px; }
+  .plot, .pen-slot { width: 46px; height: 46px; }
+  .plot-emoji { font-size: 22px; }
+  .pen-slot-emoji { font-size: 23px; }
   .farm-stat { font-size: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plot-emoji, .pen-slot-emoji { animation: none !important; }
+  .pen-slot { transition: none !important; }
 }
