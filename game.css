@@ -1,0 +1,43 @@
+.game-hero { padding: 32px 0 0; }
+.game-intro { font-size: 19px; color: var(--muted); margin: 0 0 20px; }
+
+.game-stage {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  background: linear-gradient(#cfe8ff, #eef6ff);
+  overflow: hidden;
+}
+#game-canvas { display: block; width: 100%; height: auto; touch-action: manipulation; cursor: pointer; }
+
+.game-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+  background: rgba(248, 247, 243, .88);
+}
+.game-overlay[hidden] { display: none; }
+.game-overlay-title { font: 400 30px/1.2 var(--serif); color: var(--ink); margin: 0; }
+.game-overlay-sub { font-size: 16px; color: var(--muted); margin: 0; }
+
+.game-scoreboard {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin-top: 16px;
+  font-size: 18px;
+  color: var(--muted);
+}
+.game-scoreboard strong { color: var(--accent); font-size: 20px; }
+
+@media (max-width: 480px) {
+  .game-overlay-title { font-size: 26px; }
+}

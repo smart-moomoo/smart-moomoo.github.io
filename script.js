@@ -3,6 +3,9 @@ document.getElementById('year').textContent = new Date().getFullYear();
 
 const navigation = [...document.querySelectorAll('nav a')];
 const sections = navigation
+  // Only same-page anchor links (e.g. "#about") are scroll-spy targets;
+  // links to other pages (e.g. "./game.html") are not valid CSS selectors.
+  .filter(link => link.getAttribute('href').startsWith('#'))
   .map(link => document.querySelector(link.getAttribute('href')))
   .filter(Boolean)
   .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
