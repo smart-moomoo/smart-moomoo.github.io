@@ -94,6 +94,9 @@ h2 { font: 400 36px/1.25 var(--serif); letter-spacing: -.5px; margin: 0; }
 .timeline-content .item-meta { color: var(--muted); font-size: 18px; margin: 0 0 10px; }
 .timeline-content .thesis { font-size: 18px; }
 .text-link { display: inline-block; font-size: 17px; text-decoration: none; }
+.guestbook-intro { font-size: 19px; margin: 0 0 20px; }
+.guestbook-embed { min-height: 200px; }
+.guestbook-embed iframe { max-width: 100%; }
 footer { border-top: 1px solid var(--line); margin-top: 36px; padding: 20px 0 28px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; font-size: 16px; color: var(--muted); }
 footer a { text-decoration: none; }
 
