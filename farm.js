@@ -42,7 +42,6 @@
 
   function defaultState() {
     return {
-      coins: 25,
       totalHarvested: 0,
       totalCollected: 0,
       plots: Array.from({ length: PLOT_COUNT }, (_, i) => ({
@@ -73,6 +72,23 @@
 
   let state = load();
 
+  // Coins live in the shared cross-game wallet (arcade.js), not in this
+  // page's own save file, so a Jumping Bird score and a farm harvest both
+  // spend from the same balance. The first game ever opened on this site
+  // seeds the wallet; if this browser already has old farm-only coins
+  // saved from before that change, carry them over once instead of
+  // resetting progress to the default starting amount.
+  const STARTING_COINS = 20;
+  if (window.ArcadeCoins && ArcadeCoins.get() === null) {
+    let legacyRaw = null;
+    try { legacyRaw = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch {}
+    const legacyCoins = legacyRaw && typeof legacyRaw.coins === 'number' ? legacyRaw.coins : null;
+    ArcadeCoins.set(legacyCoins != null ? legacyCoins : STARTING_COINS);
+  }
+  function coins() { return window.ArcadeCoins ? (ArcadeCoins.get() ?? 0) : 0; }
+  function spend(amount) { if (window.ArcadeCoins) ArcadeCoins.add(-amount); }
+  function earn(amount) { if (window.ArcadeCoins) ArcadeCoins.add(amount); }
+
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
   }
@@ -96,16 +112,16 @@
   }
 
   function unlockPlot(index, cost) {
-    if (cost == null || state.coins < cost) return;
-    state.coins -= cost;
+    if (cost == null || coins() < cost) return;
+    spend(cost);
     state.plots[index].unlocked = true;
     save();
     render();
   }
 
   function unlockPen(index, cost) {
-    if (cost == null || state.coins < cost) return;
-    state.coins -= cost;
+    if (cost == null || coins() < cost) return;
+    spend(cost);
     state.pens[index].unlocked = true;
     save();
     render();
@@ -113,8 +129,8 @@
 
   function plantSeed(index, plantId) {
     const plant = PLANTS[plantId];
-    if (state.coins < plant.cost) return;
-    state.coins -= plant.cost;
+    if (coins() < plant.cost) return;
+    spend(plant.cost);
     state.plots[index].plantId = plantId;
     state.plots[index].plantedAt = Date.now();
     closeTray();
@@ -128,7 +144,7 @@
     const plant = PLANTS[plot.plantId];
     const elapsed = (Date.now() - plot.plantedAt) / 1000;
     if (elapsed < plant.grow) return;
-    state.coins += plant.sell;
+    earn(plant.sell);
     state.totalHarvested += 1;
     plot.plantId = null;
     plot.plantedAt = null;
@@ -138,8 +154,8 @@
 
   function buyAnimal(index, animalId) {
     const animal = ANIMALS[animalId];
-    if (state.coins < animal.cost) return;
-    state.coins -= animal.cost;
+    if (coins() < animal.cost) return;
+    spend(animal.cost);
     state.pens[index].animalId = animalId;
     state.pens[index].lastCollectedAt = Date.now();
     closeTray();
@@ -153,7 +169,7 @@
     const animal = ANIMALS[pen.animalId];
     const elapsed = (Date.now() - pen.lastCollectedAt) / 1000;
     if (elapsed < animal.cycle) return;
-    state.coins += animal.value;
+    earn(animal.value);
     state.totalCollected += 1;
     pen.lastCollectedAt = Date.now();
     save();
@@ -171,7 +187,7 @@
       if (!plot.unlocked) {
         const cost = PLOT_UNLOCK_COSTS[index - PLOT_UNLOCKED_START] ?? null;
         btn.classList.add('is-locked');
-        btn.disabled = cost == null || state.coins < cost;
+        btn.disabled = cost == null || coins() < cost;
         btn.innerHTML = `<span class="farm-cell-emoji">🔒</span><span class="farm-cell-label">Unlock · ${cost} 🪙</span>`;
         btn.setAttribute('aria-label', `Locked plot. Unlock for ${cost} coins.`);
         btn.addEventListener('click', () => unlockPlot(index, cost));
@@ -211,7 +227,7 @@
       if (!pen.unlocked) {
         const cost = PEN_UNLOCK_COSTS[index - PEN_UNLOCKED_START] ?? null;
         btn.classList.add('is-locked');
-        btn.disabled = cost == null || state.coins < cost;
+        btn.disabled = cost == null || coins() < cost;
         btn.innerHTML = `<span class="farm-cell-emoji">🔒</span><span class="farm-cell-label">Unlock · ${cost} 🪙</span>`;
         btn.setAttribute('aria-label', `Locked pen. Unlock for ${cost} coins.`);
         btn.addEventListener('click', () => unlockPen(index, cost));
@@ -255,7 +271,7 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'farm-tray-option';
-        btn.disabled = state.coins < plant.cost;
+        btn.disabled = coins() < plant.cost;
         btn.innerHTML = `<span class="farm-tray-option-emoji">${plant.emoji}</span><span class="farm-tray-option-info"><span class="farm-tray-option-name">${plant.name}</span><span class="farm-tray-option-meta">${plant.cost} 🪙 · grows in ${formatSeconds(plant.grow)} · sells for ${plant.sell} 🪙</span></span>`;
         btn.addEventListener('click', () => plantSeed(pickerTarget.index, id));
         trayOptions.appendChild(btn);
@@ -267,7 +283,7 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'farm-tray-option';
-        btn.disabled = state.coins < animal.cost;
+        btn.disabled = coins() < animal.cost;
         btn.innerHTML = `<span class="farm-tray-option-emoji">${animal.emoji}</span><span class="farm-tray-option-info"><span class="farm-tray-option-name">${animal.name}</span><span class="farm-tray-option-meta">${animal.cost} 🪙 · ${animal.product} every ${formatSeconds(animal.cycle)} · worth ${animal.value} 🪙</span></span>`;
         btn.addEventListener('click', () => buyAnimal(pickerTarget.index, id));
         trayOptions.appendChild(btn);
@@ -276,7 +292,7 @@
   }
 
   function render() {
-    coinsEl.textContent = String(Math.floor(state.coins));
+    coinsEl.textContent = String(coins());
     harvestCountEl.textContent = String(state.totalHarvested + state.totalCollected);
     renderGarden();
     renderPen();
@@ -289,7 +305,7 @@
   });
 
   resetBtn.addEventListener('click', () => {
-    if (!window.confirm('Reset your farm? This clears all progress saved in this browser.')) return;
+    if (!window.confirm('Reset your farm? This clears your plots, pens, and totals — your shared arcade coins are kept.')) return;
     state = defaultState();
     closeTray();
     save();

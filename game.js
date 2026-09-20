@@ -10,6 +10,7 @@
   const scoreEl = document.getElementById('game-score');
   const bestEl = document.getElementById('game-best');
   const shieldEl = document.getElementById('game-shield');
+  const coinsEl = document.getElementById('game-coins');
   const ctx = canvas.getContext('2d');
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
@@ -17,6 +18,12 @@
   const BEST_KEY = 'jumping-bird-best-score';
   let best = Number(localStorage.getItem(BEST_KEY)) || 0;
   bestEl.textContent = String(best);
+
+  const STARTING_COINS = 20;
+  if (window.ArcadeCoins) {
+    ArcadeCoins.ensureInitialized(STARTING_COINS);
+    if (coinsEl) coinsEl.textContent = String(ArcadeCoins.get() ?? 0);
+  }
 
   const GRAVITY = 1400;        // px/s^2
   const FLAP_VELOCITY = -380;  // px/s
@@ -129,7 +136,14 @@
       localStorage.setItem(BEST_KEY, String(best));
     }
     bestEl.textContent = String(best);
-    showOverlay('Game over', `Score ${score} — click, tap, or press Space to try again`);
+
+    let coinsMsg = '';
+    if (window.ArcadeCoins && score > 0) {
+      const total = ArcadeCoins.add(score);
+      if (coinsEl) coinsEl.textContent = String(total);
+      coinsMsg = ` — +${score} coins for your farm`;
+    }
+    showOverlay('Game over', `Score ${score}${coinsMsg} — click, tap, or press Space to try again`);
   }
 
   function consumeShield() {
