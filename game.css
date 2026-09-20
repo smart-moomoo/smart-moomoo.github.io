@@ -30,8 +30,9 @@
 
 .game-scoreboard {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 28px;
+  gap: 10px 24px;
   margin-top: 16px;
   font-size: 18px;
   color: var(--muted);
