@@ -35,19 +35,21 @@
   const MOVING_SPEED = 1.6;      // rad/s
 
   // Risk/reward scoring: flying close to a pipe edge pays out more.
-  const GRAZE_DISTANCE = 16;     // px clearance counted as a "close call"
+  const GRAZE_DISTANCE = 26;     // px clearance counted as a "close call"
   const GRAZE_BONUS = 1;
   const STREAK_MILESTONE = 3;
   const STREAK_BONUS = 5;
 
   // A collectible shield absorbs one death instead of ending the run.
   const MAX_SHIELDS = 1;
-  const SHIELD_CHANCE = 0.28;    // per spawned pipe, while under the cap
+  const SHIELD_CHANCE = 0.45;    // per spawned pipe, while under the cap
+  const GUARANTEED_ORB_BY_PIPE = 3; // force one onto an early pipe if luck hasn't given one yet
   const ORB_RADIUS = 8;
   const INVULN_TIME = 1.1;       // seconds of grace after a shield is used
 
   let state = 'ready'; // 'ready' | 'playing' | 'over'
   let bird, pipes, popups, score, shields, combo, spawnTimer, elapsed, invuln, lastTime;
+  let pipesSpawned, orbEverSpawned;
 
   function currentSpeed() { return Math.min(MAX_SPEED, BASE_SPEED + score * SPEED_RAMP); }
   function currentGap() { return Math.max(MIN_GAP, BASE_GAP - score * GAP_SHRINK); }
@@ -63,16 +65,22 @@
     spawnTimer = 0;
     elapsed = 0;
     invuln = 0;
+    pipesSpawned = 0;
+    orbEverSpawned = false;
     scoreEl.textContent = '0';
     shieldEl.textContent = '0';
   }
   reset();
 
   function spawnPipe() {
+    pipesSpawned += 1;
     const gapHeight = currentGap();
     const gapY = PIPE_MARGIN + Math.random() * (HEIGHT - PIPE_MARGIN * 2 - gapHeight);
     const moving = score >= MOVING_PIPE_SCORE && Math.random() < MOVING_PIPE_CHANCE;
-    const hasOrb = shields < MAX_SHIELDS && Math.random() < SHIELD_CHANCE;
+    const eligibleForOrb = shields < MAX_SHIELDS;
+    const forceOrb = eligibleForOrb && !orbEverSpawned && pipesSpawned >= GUARANTEED_ORB_BY_PIPE;
+    const hasOrb = eligibleForOrb && (forceOrb || Math.random() < SHIELD_CHANCE);
+    if (hasOrb) orbEverSpawned = true;
     pipes.push({
       x: WIDTH + PIPE_WIDTH,
       baseGapY: gapY,
