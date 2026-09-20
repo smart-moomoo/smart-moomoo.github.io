@@ -223,6 +223,35 @@
   let plotEls = [];
   let penEls = [];
 
+  // Pixel-art canvases: 3 logical px per sprite grid cell (~42px sprites).
+  const SPRITE_SIZE = 3;
+  const hasPixelArt = !!window.PixelArt;
+
+  function makeSpriteCanvas() {
+    if (!hasPixelArt) return null;
+    return PixelArt.createCanvas(SPRITE_SIZE);
+  }
+
+  function drawSprite(canvas, name, palette) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const logical = PixelArt.GRID * SPRITE_SIZE;
+    ctx.clearRect(0, 0, logical, logical);
+    PixelArt.draw(ctx, name, palette, SPRITE_SIZE, 0, 0);
+    ctx.restore();
+  }
+
+  function plantSpriteName(plantId, fraction) {
+    if (fraction < 0.3) return 'sprout';
+    if (fraction < 1) return `${plantId}_young`;
+    return `${plantId}_ready`;
+  }
+
+  let walkFrame = 0; // toggles 0/1 to animate animal walk cycles
+
   function initGardenDOM() {
     gardenScene.innerHTML = '';
     plotEls = GARDEN_POSITIONS.map((pos, index) => {
@@ -233,7 +262,15 @@
       btn.style.top = pos.top + '%';
       btn.style.setProperty('--i', index);
       btn.setAttribute('role', 'listitem');
-      btn.innerHTML = '<span class="plot-emoji"></span><span class="plot-label"></span><span class="plot-bar"><span></span></span>';
+      const canvas = makeSpriteCanvas();
+      if (canvas) btn.appendChild(canvas);
+      const label = document.createElement('span');
+      label.className = 'plot-label';
+      btn.appendChild(label);
+      const bar = document.createElement('span');
+      bar.className = 'plot-bar';
+      bar.innerHTML = '<span></span>';
+      btn.appendChild(bar);
       btn.addEventListener('click', () => {
         const plot = state.plots[index];
         if (!plot.unlocked) {
@@ -246,7 +283,7 @@
         }
       });
       gardenScene.appendChild(btn);
-      return btn;
+      return { btn, canvas, label, bar, barFill: bar.querySelector('span') };
     });
   }
 
@@ -259,7 +296,15 @@
       btn.style.left = pos.left + '%';
       btn.style.top = pos.top + '%';
       btn.setAttribute('role', 'listitem');
-      btn.innerHTML = '<span class="pen-slot-emoji"></span><span class="pen-slot-label"></span><span class="pen-slot-bar"><span></span></span>';
+      const canvas = makeSpriteCanvas();
+      if (canvas) btn.appendChild(canvas);
+      const label = document.createElement('span');
+      label.className = 'pen-slot-label';
+      btn.appendChild(label);
+      const bar = document.createElement('span');
+      bar.className = 'pen-slot-bar';
+      bar.innerHTML = '<span></span>';
+      btn.appendChild(bar);
       btn.addEventListener('click', () => {
         const pen = state.pens[index];
         if (!pen.unlocked) {
@@ -272,38 +317,35 @@
         }
       });
       pastureScene.appendChild(btn);
-      return btn;
+      return { btn, canvas, label, bar, barFill: bar.querySelector('span') };
     });
   }
 
   function updateGarden() {
     state.plots.forEach((plot, index) => {
-      const btn = plotEls[index];
-      const emoji = btn.querySelector('.plot-emoji');
-      const label = btn.querySelector('.plot-label');
-      const bar = btn.querySelector('.plot-bar');
-      const barFill = bar.querySelector('span');
+      const { btn, canvas, label, bar, barFill } = plotEls[index];
 
       if (!plot.unlocked) {
         const cost = PLOT_UNLOCK_COSTS[index - PLOT_UNLOCKED_START] ?? null;
         btn.className = 'plot is-locked';
         btn.disabled = cost == null || coins() < cost;
-        emoji.textContent = '🔒';
+        drawSprite(canvas, 'lock', PixelArt && PixelArt.MISC_PALETTE);
         label.textContent = `${cost} 🪙`;
         bar.style.visibility = 'hidden';
         btn.setAttribute('aria-label', `Locked plot. Unlock for ${cost} coins.`);
       } else if (!plot.plantId) {
         btn.className = 'plot is-empty';
         btn.disabled = false;
-        emoji.textContent = '➕';
+        drawSprite(canvas, 'plus', PixelArt && PixelArt.MISC_PALETTE);
         label.textContent = 'Plant';
         bar.style.visibility = 'hidden';
         btn.setAttribute('aria-label', 'Empty plot. Tap to choose a seed to plant.');
       } else {
         const plant = PLANTS[plot.plantId];
         const elapsed = (Date.now() - plot.plantedAt) / 1000;
+        const fraction = Math.min(1, elapsed / plant.grow);
         const ready = elapsed >= plant.grow;
-        emoji.textContent = plant.emoji;
+        drawSprite(canvas, plantSpriteName(plot.plantId, fraction), PixelArt && PixelArt.PLANT_PALETTE);
         if (ready) {
           btn.className = 'plot is-ready';
           btn.disabled = false;
@@ -315,7 +357,7 @@
           btn.disabled = true;
           label.textContent = formatSeconds(plant.grow - elapsed);
           bar.style.visibility = 'visible';
-          barFill.style.width = Math.min(100, (elapsed / plant.grow) * 100) + '%';
+          barFill.style.width = (fraction * 100) + '%';
           btn.setAttribute('aria-label', `${plant.name} growing, ${formatSeconds(plant.grow - elapsed)} left.`);
         }
       }
@@ -324,18 +366,14 @@
 
   function updatePasture() {
     state.pens.forEach((pen, index) => {
-      const btn = penEls[index];
-      const emoji = btn.querySelector('.pen-slot-emoji');
-      const label = btn.querySelector('.pen-slot-label');
-      const bar = btn.querySelector('.pen-slot-bar');
-      const barFill = bar.querySelector('span');
+      const { btn, canvas, label, bar, barFill } = penEls[index];
 
       if (!pen.unlocked) {
         const cost = PEN_UNLOCK_COSTS[index - PEN_UNLOCKED_START] ?? null;
         setPos(btn, PEN_GATE_POSITIONS[index]);
         btn.className = 'pen-slot is-locked';
         btn.disabled = cost == null || coins() < cost;
-        emoji.textContent = '🔒';
+        drawSprite(canvas, 'lock', PixelArt && PixelArt.MISC_PALETTE);
         label.textContent = `${cost} 🪙`;
         bar.style.visibility = 'hidden';
         btn.setAttribute('aria-label', `Locked pen. Unlock for ${cost} coins.`);
@@ -343,7 +381,7 @@
         setPos(btn, PEN_GATE_POSITIONS[index]);
         btn.className = 'pen-slot is-empty';
         btn.disabled = false;
-        emoji.textContent = '➕';
+        drawSprite(canvas, 'plus', PixelArt && PixelArt.MISC_PALETTE);
         label.textContent = 'Animal';
         bar.style.visibility = 'hidden';
         btn.setAttribute('aria-label', 'Empty pen. Tap to bring home an animal.');
@@ -353,7 +391,7 @@
         setPos(btn, pos);
         const elapsed = (Date.now() - pen.lastCollectedAt) / 1000;
         const ready = elapsed >= animal.cycle;
-        emoji.textContent = animal.emoji;
+        drawSprite(canvas, `${pen.animalId}_${walkFrame ? 'b' : 'a'}`, PixelArt && PixelArt.ANIMAL_PALETTE);
         if (ready) {
           btn.className = 'pen-slot is-ready';
           btn.disabled = false;
@@ -431,4 +469,10 @@
   render();
   setInterval(render, 1000);
   setInterval(retargetWander, 4000);
+  // Toggles the animal walk-cycle frame so animals visibly step in place
+  // even between wander moves, not just glide with static legs.
+  setInterval(() => {
+    walkFrame = walkFrame ? 0 : 1;
+    updatePasture();
+  }, 450);
 })();
