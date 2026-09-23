@@ -1,0 +1,1272 @@
+// MMTI view: draws the colony and world map as pixel art, turns clicks and drags
+// into MMTI.command() orders, and hosts letters, the inspect pane, and the
+// reflection room. Game time only advances while this tab is visible.
+(() => {
+  'use strict';
+  const M = window.MMTI;
+  const root = document.getElementById('mmti-app');
+  if (!root || !M || !M.load || !M.observe) return;
+  const O = M.observe;
+  const q = M.query;
+
+  const TS = 16, W = M.W, H = M.H, CW = W * TS, CH = H * TS;
+  const HOUR_MS = 10000;
+  const SPEEDS = [1, 3, 6];
+  const INK = '#171512';
+  const ISSUES_URL = 'https://github.com/smart-moomoo/smart-moomoo.github.io/issues/new';
+  const WORK_LABEL = { build: 'Construct', repair: 'Repair', chop: 'Chop', harvest: 'Harvest' };
+
+  let hadSave = false;
+  try { hadSave = !!localStorage.getItem('mmti-colony-v2'); } catch {}
+  M.load();
+  const S = () => M.state;
+
+  const params = new URLSearchParams(location.search);
+  const rType = params.get('mmti-event'), rDead = params.get('mmti-deadline');
+  if ((rType === 'heating' || rType === 'caravan') && (rDead === 'urgent' || rDead === 'none')) {
+    M.review = { type: rType, deadline: rDead };
+    S().story.nextAt = Math.min(S().story.nextAt, S().t + 0.3);
+  }
+
+  const ui = { view: 'map', tool: null, sel: null, hover: null, paused: false, speed: 0, modal: null, drag: null, toast: null };
+
+  // ---------- helpers ----------
+  function h(tag, props, ...kids) {
+    const node = document.createElement(tag);
+    if (props) {
+      for (const [k, v] of Object.entries(props)) {
+        if (v == null || v === false) continue;
+        if (k === 'class') node.className = v;
+        else if (k === 'on') for (const [ev, fn] of Object.entries(v)) node.addEventListener(ev, fn);
+        else node.setAttribute(k, v === true ? '' : v);
+      }
+    }
+    for (const kid of kids.flat()) if (kid != null && kid !== false) node.append(kid.nodeType ? kid : String(kid));
+    return node;
+  }
+  const R = (g, x, y, w, hh, c) => { g.fillStyle = c; g.fillRect(x, y, w, hh); };
+  function hash(x, y, k = 0) {
+    let v = (x * 374761393 + y * 668265263 + k * 1442695041) | 0;
+    v = Math.imul(v ^ (v >>> 13), 1274126177);
+    return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
+  }
+  function shade(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    const c = (v) => Math.max(0, Math.min(255, Math.round(v * f)));
+    return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`;
+  }
+  const fmtH = (x) => `${Math.max(0, x).toFixed(1)}h`;
+  const clock = (t) => {
+    const hr = t % 24;
+    const hh = Math.floor(hr), mm = Math.floor((hr - hh) * 60 / 10) * 10;
+    return `Day ${Math.floor(t / 24) + 1} · ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  };
+
+  // ---------- sprites ----------
+  const cache = new Map();
+  function sprite(key, w, hh, draw) {
+    let c = cache.get(key);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = w;
+      c.height = hh;
+      draw(c.getContext('2d'));
+      cache.set(key, c);
+    }
+    return c;
+  }
+
+  const SPR = {
+    tree: (v) => sprite(`tree${v}`, 16, 22, (g) => {
+      R(g, 6, 13, 4, 9, INK); R(g, 7, 13, 2, 8, '#6b4a23'); R(g, 7, 13, 1, 8, '#4a3218');
+      const ry = v ? 7 : 7.8;
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const dx = (x - 7.5) / 7.6, dy = (y - 7.5) / ry, d = dx * dx + dy * dy;
+        if (d > 1) continue;
+        let col = d > 0.78 ? '#1d3419' : x + y < 10 ? '#5ea447' : y > 10 || x > 11 ? '#2e5e27' : '#3f7f33';
+        const n = hash(x, y, v + 7);
+        if (col === '#3f7f33' && n < 0.15) col = '#5ea447';
+        else if (col === '#3f7f33' && n > 0.88) col = '#2e5e27';
+        R(g, x, y, 1, 1, col);
+      }
+    }),
+    bush: (ripe) => sprite(`bush${ripe}`, 16, 16, (g) => {
+      for (let y = 3; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const dx = (x - 7.5) / 6.8, dy = (y - 10) / 5.4, d = dx * dx + dy * dy;
+        if (d > 1) continue;
+        let col = d > 0.72 ? '#1d3a19' : x + y < 14 ? '#5a9e45' : '#3f7d34';
+        if (col === '#3f7d34' && hash(x, y, 3) < 0.12) col = '#5a9e45';
+        R(g, x, y, 1, 1, col);
+      }
+      if (ripe) for (const [x, y] of [[4, 8], [9, 7], [11, 11], [6, 12], [8, 10]]) { R(g, x, y, 2, 2, '#d8323c'); R(g, x, y, 1, 1, '#ff9a9a'); }
+    }),
+    bed: () => sprite('bed', 16, 16, (g) => {
+      R(g, 1, 0, 14, 16, INK); R(g, 2, 1, 12, 14, '#7a5230'); R(g, 3, 2, 10, 4, '#f4efe4'); R(g, 3, 5, 10, 1, '#d8d0bf');
+      R(g, 3, 6, 10, 8, '#3d6f9e'); R(g, 3, 6, 10, 1, '#6a9bd0'); R(g, 3, 13, 10, 1, '#2c5277');
+    }),
+    table: () => sprite('table', 16, 16, (g) => {
+      R(g, 1, 3, 14, 9, INK); R(g, 2, 4, 12, 6, '#a8753f'); R(g, 2, 4, 12, 1, '#c48f55'); R(g, 2, 10, 12, 1, '#6e4726');
+      R(g, 2, 11, 3, 4, INK); R(g, 11, 11, 3, 4, INK); R(g, 3, 11, 1, 3, '#6e4726'); R(g, 12, 11, 1, 3, '#6e4726');
+    }),
+    heater: (on, f) => sprite(`heater${on}${f}`, 16, 16, (g) => {
+      R(g, 2, 2, 12, 13, INK); R(g, 3, 3, 10, 11, on ? '#a63d2e' : '#6e4a44'); R(g, 3, 3, 10, 2, on ? '#cf5a45' : '#86625b');
+      for (const y of [7, 9, 11]) R(g, 5, y, 6, 1, on ? (f ? '#ffc86b' : '#ff9a3d') : '#2e1c19');
+      R(g, 3, 14, 2, 2, INK); R(g, 11, 14, 2, 2, INK);
+    }),
+    stove: (f) => sprite(`stove${f}`, 16, 16, (g) => {
+      R(g, 6, 0, 4, 5, INK); R(g, 7, 0, 2, 4, '#4a4a4a'); R(g, 2, 4, 12, 11, INK); R(g, 3, 5, 10, 9, '#3a3a3a'); R(g, 3, 5, 10, 1, '#5a5a5a');
+      R(g, 5, 8, 6, 4, INK); R(g, 6, 9, 4, 2, f ? '#ffb347' : '#ff7a2e'); R(g, 7 + f, 9, 1, 1, '#ffe08a'); R(g, 3, 14, 2, 2, INK); R(g, 11, 14, 2, 2, INK);
+    }),
+    campfire: (f) => sprite(`campfire${f}`, 16, 16, (g) => {
+      R(g, 2, 11, 12, 4, INK); R(g, 3, 12, 2, 2, '#8a8a82'); R(g, 6, 13, 2, 1, '#9a9a92'); R(g, 9, 12, 2, 2, '#8a8a82'); R(g, 12, 12, 1, 2, '#9a9a92');
+      R(g, 4, 10, 8, 2, '#6b4a23');
+      const flame = f ? [[6, 5, 4, 5], [5, 7, 6, 3], [7, 3, 2, 2]] : [[5, 6, 5, 4], [6, 4, 4, 3], [8, 2, 1, 2]];
+      for (const [x, y, w, hh] of flame) R(g, x, y, w, hh, '#ff7a2e');
+      R(g, 7, 6, 2, 3, '#ffd35a');
+    }),
+    keeper: () => sprite('keeper', 16, 16, (g) => {
+      if (window.PixelArt) window.PixelArt.draw(g, 'keeper_a', window.PixelArt.PEOPLE_PALETTE, 1, 1, 1);
+    }),
+    logs: () => sprite('logs', 16, 16, (g) => {
+      R(g, 1, 8, 14, 7, INK); R(g, 2, 9, 12, 5, '#8a5a2b'); R(g, 2, 9, 12, 1, '#a8753f'); R(g, 2, 9, 2, 5, '#c9a06a'); R(g, 2, 11, 12, 1, INK);
+      R(g, 4, 4, 9, 5, INK); R(g, 5, 5, 7, 3, '#8a5a2b'); R(g, 5, 5, 7, 1, '#a8753f'); R(g, 5, 5, 2, 3, '#c9a06a');
+    }),
+    crate: () => sprite('crate', 16, 16, (g) => {
+      R(g, 1, 6, 14, 9, INK); R(g, 2, 7, 12, 7, '#a06b3a'); R(g, 2, 7, 12, 1, '#c08850'); R(g, 2, 10, 12, 1, '#7a4f28');
+      for (const [x, y] of [[3, 3], [6, 2], [9, 3], [5, 4], [8, 4], [11, 4]]) { R(g, x, y, 2, 2, '#d8323c'); R(g, x, y, 1, 1, '#ff9a9a'); }
+      R(g, 2, 4, 12, 2, 'rgba(0,0,0,0)');
+    }),
+    axe: () => sprite('axe', 8, 8, (g) => { R(g, 1, 1, 6, 6, '#fffefa'); R(g, 2, 2, 1, 5, '#6b4a23'); R(g, 3, 2, 3, 3, '#6e6e6e'); R(g, 0, 0, 8, 1, INK); R(g, 0, 7, 8, 1, INK); R(g, 0, 0, 1, 8, INK); R(g, 7, 0, 1, 8, INK); }),
+    pick: () => sprite('pick', 8, 8, (g) => { R(g, 1, 1, 6, 6, '#fffefa'); R(g, 2, 3, 2, 2, '#d8323c'); R(g, 4, 2, 2, 2, '#d8323c'); R(g, 4, 4, 2, 2, '#c02030'); R(g, 0, 0, 8, 1, INK); R(g, 0, 7, 8, 1, INK); R(g, 0, 0, 1, 8, INK); R(g, 7, 0, 1, 8, INK); }),
+  };
+
+  const COL_A = ['...oooo...', '..ohhhho..', '.ohhhhhho.', '.ohsssssho', '.osesssseo', '.ossssssso', '..oossoo..', '.occcccco.', 'occcccccco', 'oscccccCso', '.occcccCo.', '.opppppppo', '.opo..opo.', '.obo..obo.'];
+  const COL_B = COL_A.slice(0, 12).concat(['..opoopo..', '..oboobo..']);
+  function colonistSprite(c, frame, flip, headOnly) {
+    return sprite(`c${c.shirt}${c.hair}${frame}${flip}${headOnly}`, 10, 14, (g) => {
+      const pal = { o: INK, h: c.hair, s: '#f0c39a', e: INK, c: c.shirt, C: shade(c.shirt, 0.72), p: '#3b3f58', b: '#2a2018' };
+      const rows = (frame ? COL_B : COL_A).slice(0, headOnly ? 6 : 14);
+      rows.forEach((row, y) => {
+        for (let x = 0; x < 10; x++) {
+          const ch = row[flip ? 9 - x : x];
+          if (ch !== '.') R(g, x, y, 1, 1, pal[ch]);
+        }
+      });
+    });
+  }
+
+  function iconCanvas(kind, scale = 2) {
+    const src = spriteFor(kind);
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    c.getContext('2d').drawImage(src, 0, 0);
+    c.style.width = `${src.width * scale / (src.height > 16 ? 1.4 : 1)}px`;
+    c.style.height = `${src.height * scale / (src.height > 16 ? 1.4 : 1)}px`;
+    c.className = 'mm-icon';
+    return c;
+  }
+  function spriteFor(kind) {
+    switch (kind) {
+      case 'bed': return SPR.bed();
+      case 'table': return SPR.table();
+      case 'stove': return SPR.stove(0);
+      case 'campfire': return SPR.campfire(0);
+      case 'logs': return SPR.logs();
+      case 'crate': return SPR.crate();
+      case 'wall': return sprite('wallicon', 16, 16, (g) => drawWall(g, 0, 0, 0, 0));
+      case 'door': return sprite('dooricon', 16, 16, (g) => drawDoor(g, 0, 0));
+      case 'chop': return SPR.tree(0);
+      case 'harvest': return SPR.bush(true);
+      case 'cancel': return sprite('cancel', 16, 16, (g) => { for (let i = 2; i < 14; i++) { R(g, i, i, 2, 2, '#b23a2a'); R(g, 15 - i, i, 2, 2, '#b23a2a'); } });
+      default: return sprite('none', 16, 16, () => {});
+    }
+  }
+
+  function drawWall(g, px, py, x, y) {
+    R(g, px, py, 16, 16, '#6f6b64');
+    R(g, px, py, 16, 6, '#9b968c');
+    R(g, px, py, 16, 1, '#b3ada2');
+    R(g, px, py + 6, 16, 1, '#57544e');
+    R(g, px, py + 10, 16, 1, '#5d5a54');
+    R(g, px + ((x + y) % 2 ? 4 : 10), py + 7, 1, 3, '#5d5a54');
+    R(g, px + ((x + y) % 2 ? 10 : 4), py + 11, 1, 5, '#5d5a54');
+    R(g, px, py + 15, 16, 1, '#3f3c38');
+  }
+  function drawDoor(g, px, py) {
+    R(g, px, py, 16, 16, '#4a2e17');
+    R(g, px + 2, py + 1, 12, 15, '#8a5a2b');
+    R(g, px + 2, py + 5, 12, 1, '#6e4520');
+    R(g, px + 2, py + 10, 12, 1, '#6e4520');
+    R(g, px + 11, py + 8, 2, 2, '#e0b64a');
+  }
+
+  // ---------- terrain ----------
+  let terrainCanvas = null;
+  function buildTerrain() {
+    const s = S();
+    const c = document.createElement('canvas');
+    c.width = CW;
+    c.height = CH;
+    const g = c.getContext('2d');
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const t = s.terrain[y * W + x], px = x * TS, py = y * TS;
+      const spk = (n, cols) => { for (let k = 0; k < n; k++) R(g, px + Math.floor(hash(x, y, k) * 16), py + Math.floor(hash(x, y, k + 40) * 16), 1, 1, cols[k % cols.length]); };
+      if (t === M.T.GRASS) {
+        R(g, px, py, TS, TS, '#5e9a3d');
+        spk(9, ['#6eae4a', '#4f8733', '#68a545']);
+        if (hash(x, y, 99) < 0.08) R(g, px + 6 + Math.floor(hash(x, y, 98) * 5), py + 5 + Math.floor(hash(x, y, 97) * 6), 1, 1, hash(x, y, 96) < 0.5 ? '#f1d24a' : '#f4f0e8');
+        if (hash(x, y, 95) < 0.3) { const tx = px + Math.floor(hash(x, y, 94) * 13), ty = py + Math.floor(hash(x, y, 93) * 12); R(g, tx, ty, 1, 2, '#78b953'); R(g, tx + 2, ty + 1, 1, 2, '#78b953'); }
+      } else if (t === M.T.DIRT) {
+        R(g, px, py, TS, TS, '#8b6b45');
+        spk(10, ['#9a7a51', '#77593a', '#a89a86']);
+      } else if (t === M.T.SAND) {
+        R(g, px, py, TS, TS, '#d7c38a');
+        spk(8, ['#c8b27a', '#e3d29c']);
+      } else if (t === M.T.WATER) {
+        R(g, px, py, TS, TS, '#3a75ad');
+        spk(5, ['#336a9e', '#4581b8']);
+      } else if (t === M.T.FLOOR) {
+        R(g, px, py, TS, TS, '#a9784a');
+        for (const ly of [0, 4, 8, 12]) { R(g, px, py + ly, TS, 1, '#b98755'); R(g, px, py + ly + 3, TS, 1, '#8b5e36'); }
+        for (const [ly, sx] of [[0, (x * 5) % 16], [4, (x * 5 + 7) % 16], [8, (x * 5 + 3) % 16], [12, (x * 5 + 11) % 16]]) R(g, px + sx, py + ly, 1, 4, '#8b5e36');
+      }
+    }
+    terrainCanvas = c;
+  }
+
+  // ---------- DOM ----------
+  const canvas = h('canvas', { class: 'mm-canvas', width: CW, height: CH, 'aria-label': 'Colony map' });
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const el = {
+    clock: h('span', { class: 'mm-clock' }),
+    weather: h('span', { class: 'mm-weather' }),
+    wood: h('b'), food: h('b'),
+    speed: [],
+    bar: h('div', { class: 'mm-colonists', 'aria-label': 'Colonists' }),
+    letters: h('div', { class: 'mm-letters', 'aria-label': 'Letters' }),
+    hover: h('div', { class: 'mm-hover' }),
+    toast: h('div', { class: 'mm-toast', hidden: true }),
+    tip: h('div', { class: 'mm-tip' }),
+    inspect: h('div', { class: 'mm-inspect' }),
+    modal: h('div', { class: 'mm-modal', hidden: true }),
+    viewBtn: null,
+    toolBtns: new Map(),
+  };
+  const speedGroup = h('div', { class: 'mm-speed', role: 'group', 'aria-label': 'Game speed' });
+  ['❚❚', '▶', '▶▶', '▶▶▶'].forEach((label, i) => {
+    const b = h('button', { type: 'button', class: 'mm-btn mm-btn-s', 'aria-label': i ? `Speed ${i}` : 'Pause', on: { click: () => setSpeed(i - 1) } }, label);
+    el.speed.push(b);
+    speedGroup.append(b);
+  });
+  const top = h('div', { class: 'mm-top' },
+    el.clock, el.weather,
+    h('span', { class: 'mm-chip', title: 'Wood' }, iconCanvas('logs', 1.25), el.wood),
+    h('span', { class: 'mm-chip', title: 'Food' }, iconCanvas('crate', 1.25), el.food),
+    speedGroup,
+    h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: openMenu } }, 'Menu'));
+  const stage = h('div', { class: 'mm-stage' }, canvas, el.letters, el.hover, el.toast);
+
+  function toolButton(kind, label, sub) {
+    const b = h('button', { type: 'button', class: 'mm-tool', title: label, on: { click: () => setTool(ui.tool && ui.tool.kind === kind ? null : { kind }) } },
+      iconCanvas(kind, 1.5), h('span', null, label), sub ? h('small', null, sub) : null);
+    el.toolBtns.set(kind, b);
+    return b;
+  }
+  el.viewBtn = h('button', { type: 'button', class: 'mm-btn', on: { click: () => setView(ui.view === 'map' ? 'world' : 'map') } }, 'World map');
+  const tools = h('div', { class: 'mm-tools' },
+    h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Architect'),
+      M.BUILDABLE.map((k) => toolButton(k, M.DEFS[k].label, `${M.DEFS[k].cost} wood`))),
+    h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Orders'),
+      toolButton('chop', 'Chop'), toolButton('harvest', 'Harvest'), toolButton('cancel', 'Cancel')),
+    h('div', { class: 'mm-toolrow mm-toolrow-views' },
+      el.viewBtn,
+      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('work') } }, 'Work'),
+      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('reflect') } }, 'Archivist'),
+      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('evidence') } }, 'Evidence'),
+      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('propose') } }, 'Propose')),
+    el.tip);
+  root.replaceChildren(h('div', { class: 'mm' }, top, el.bar, stage, h('div', { class: 'mm-bottom' }, el.inspect, tools), el.modal));
+
+  // ---------- state changes ----------
+  function setSpeed(i) {
+    if (i < 0) ui.paused = !ui.paused;
+    else { ui.speed = i; ui.paused = false; }
+    renderSpeed();
+  }
+  function renderSpeed() {
+    el.speed.forEach((b, i) => b.classList.toggle('is-on', i === 0 ? ui.paused : !ui.paused && ui.speed === i - 1));
+  }
+  function setTool(t) {
+    ui.tool = t;
+    ui.drag = null;
+    for (const [k, b] of el.toolBtns) b.classList.toggle('is-on', !!t && t.kind === k);
+    if (t && ui.view !== 'map') setView('map');
+    const tips = {
+      wall: 'Click or drag to plan walls.', door: 'Click a wall gap to plan a door.',
+      chop: 'Drag over trees to mark them for chopping.', harvest: 'Drag over berry bushes to mark them for harvest.',
+      cancel: 'Drag to remove plans and marks.',
+    };
+    el.tip.textContent = t ? `${tips[t.kind] || `Click to place a ${M.DEFS[t.kind].label.toLowerCase()}.`} Right-click or Esc to stop.` : '';
+  }
+  function setView(v) {
+    ui.view = v;
+    el.viewBtn.textContent = v === 'map' ? 'World map' : 'Colony';
+    canvas.setAttribute('aria-label', v === 'map' ? 'Colony map' : 'World map');
+    if (v === 'world' && ui.tool) setTool(null);
+    if (ui.sel && (v === 'world') !== (ui.sel.kind === 'world') && ui.sel.kind !== 'colonist') ui.sel = null;
+    lastInspectSig = '';
+  }
+  function select(sel) {
+    ui.sel = sel;
+    lastInspectSig = '';
+    if (!sel) return;
+    if (sel.kind === 'thing') M.command({ type: 'inspect', target: { kind: 'thing', id: sel.id } });
+    if (sel.kind === 'world') M.command({ type: 'inspect', target: { kind: 'world', what: sel.what } });
+  }
+  function toast(text) {
+    el.toast.textContent = text;
+    el.toast.hidden = false;
+    clearTimeout(ui.toast);
+    ui.toast = setTimeout(() => { el.toast.hidden = true; }, 2200);
+  }
+  function order(cmd) {
+    const res = M.command(cmd);
+    if (!res.ok && res.reason) toast(res.reason);
+    lastInspectSig = '';
+    return res;
+  }
+
+  // ---------- input ----------
+  function eventTile(e) {
+    const r = canvas.getBoundingClientRect();
+    const lx = ((e.clientX - r.left) / r.width) * CW, ly = ((e.clientY - r.top) / r.height) * CH;
+    return { lx, ly, x: Math.floor(lx / TS), y: Math.floor(ly / TS) };
+  }
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = eventTile(e);
+    if (e.button === 2) { setTool(null); return; }
+    if (ui.view === 'world') { clickWorld(p); return; }
+    if (!ui.tool) { clickMap(p); return; }
+    canvas.setPointerCapture(e.pointerId);
+    const k = ui.tool.kind;
+    ui.drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, placed: new Set() };
+    if (M.BUILDABLE.includes(k)) placeAt(p.x, p.y);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const p = eventTile(e);
+    ui.hover = p;
+    if (!ui.drag || !ui.tool) return;
+    ui.drag.x1 = p.x;
+    ui.drag.y1 = p.y;
+    if (ui.tool.kind === 'wall') placeAt(p.x, p.y);
+  });
+  canvas.addEventListener('pointerleave', () => { ui.hover = null; });
+  canvas.addEventListener('pointerup', () => {
+    const d = ui.drag;
+    ui.drag = null;
+    if (!d || !ui.tool) return;
+    const k = ui.tool.kind;
+    if (k === 'chop' || k === 'harvest' || k === 'cancel') {
+      const res = M.command({ type: 'designate', mode: k, x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1 });
+      if (!res.ok) toast(k === 'chop' ? 'Drag over trees to mark them' : k === 'harvest' ? 'Drag over berry bushes to mark them' : 'Nothing to cancel there');
+    }
+    lastInspectSig = '';
+  });
+  function placeAt(x, y) {
+    const d = ui.drag;
+    const key = `${x},${y}`;
+    if (d && d.placed.has(key)) return;
+    if (d) d.placed.add(key);
+    const res = M.command({ type: 'build', kind: ui.tool.kind, x, y });
+    if (!res.ok && (!d || d.placed.size === 1)) toast(res.reason);
+  }
+
+  function clickMap(p) {
+    const s = S();
+    let best = null, bd = 0.75;
+    for (const c of s.colonists) {
+      if (c.away) continue;
+      const d = Math.hypot(c.x + 0.5 - p.lx / TS, c.y + 0.5 - p.ly / TS);
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (best) return select({ kind: 'colonist', id: best.id });
+    const th = q.thingAt(p.x, p.y);
+    if (th) return select({ kind: 'thing', id: th.id });
+    select({ kind: 'tile', x: p.x, y: p.y });
+  }
+
+  // ---------- world map ----------
+  const WN = M.WORLD.nodes;
+  const lerp = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  const blockagePos = () => lerp(WN.R2, WN.R3, 0.35);
+  function caravanPos() {
+    const cv = S().caravan;
+    if (!cv) return null;
+    if (cv.status === 'returning') return lerp(WN.X, WN.C, Math.min(1, cv.prog / M.RETURN_HOURS));
+    if (cv.status === 'blocked' || cv.status === 'clearing') return WN.R2;
+    const a = cv.route[cv.seg], b = cv.route[cv.seg + 1];
+    if (!b) return WN[a];
+    return lerp(WN[a], WN[b], Math.min(1, cv.prog / q.segHours(a, b)));
+  }
+  function distToRoute(nodes, x, y) {
+    let best = Infinity;
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const [ax, ay] = WN[nodes[i]], [bx, by] = WN[nodes[i + 1]];
+      const dx = bx - ax, dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+      best = Math.min(best, Math.hypot(ax + dx * t - x, ay + dy * t - y));
+    }
+    return best;
+  }
+  function clickWorld(p) {
+    const inc = S().incident;
+    const hits = [];
+    const cp = caravanPos();
+    if (cp) hits.push(['caravan', Math.hypot(cp[0] - p.lx, cp[1] - p.ly)]);
+    if (inc && inc.kind === 'caravan' && (inc.stage === 'setback' || inc.stage === 'travel')) {
+      const [bx, by] = blockagePos();
+      hits.push(['blockage', Math.hypot(bx - p.lx, by - p.ly)]);
+    }
+    hits.push(['camp', Math.hypot(WN.X[0] - p.lx, WN.X[1] - p.ly)]);
+    hits.push(['colony', Math.hypot(WN.C[0] - p.lx, WN.C[1] - p.ly)]);
+    hits.push(['pass', distToRoute(M.ROUTES.pass, p.lx, p.ly) + 6]);
+    hits.push(['road', distToRoute(M.ROUTES.road, p.lx, p.ly) + 8]);
+    hits.sort((a, b) => a[1] - b[1]);
+    if (hits[0][1] < 22) select({ kind: 'world', what: hits[0][0] });
+    else select(null);
+  }
+
+  let worldBg = null;
+  function buildWorldBg() {
+    const c = document.createElement('canvas');
+    c.width = CW;
+    c.height = CH;
+    const g = c.getContext('2d');
+    for (let y = 0; y < CH; y += 8) for (let x = 0; x < CW; x += 8) R(g, x, y, 8, 8, ((x + y) / 8) % 2 ? '#7aa257' : '#82ab5e');
+    for (let y = 0; y < CH; y += 4) for (let x = 0; x < CW; x += 4) if (hash(x, y, 5) < 0.05) R(g, x, y, 2, 2, '#6c9449');
+    const river = (y) => 404 + Math.sin(y / 60) * 18;
+    for (let y = 0; y < CH; y += 2) { const x = river(y); R(g, x - 6, y, 12, 2, '#3a75ad'); R(g, x - 7, y, 1, 2, '#d7c38a'); R(g, x + 6, y, 1, 2, '#d7c38a'); if (hash(0, y, 8) < 0.2) R(g, x - 2, y, 3, 1, '#6ea3d6'); }
+    const mountain = (mx, my, s) => {
+      for (let i = 0; i < s; i += 2) {
+        const w = Math.max(2, i * 2);
+        R(g, mx - w / 2, my - s + i, w, 2, i < s * 0.25 ? '#f4f1ea' : '#8d8a84');
+        R(g, mx - w / 2, my - s + i, 2, 2, INK);
+        R(g, mx + w / 2 - 2, my - s + i, 2, 2, '#5f5c57');
+      }
+    };
+    [[250, 150, 60], [320, 120, 50], [410, 100, 70], [540, 100, 56], [620, 130, 64], [700, 110, 48], [200, 100, 40], [470, 60, 40], [380, 60, 36], [660, 70, 40]].forEach(([x, y, s]) => mountain(x, y, s));
+    const forest = (fx, fy) => { R(g, fx - 3, fy - 5, 7, 6, '#2e5e27'); R(g, fx - 2, fy - 6, 5, 2, '#3f7f33'); R(g, fx, fy + 1, 1, 2, '#4a3218'); };
+    for (let n = 0; n < 160; n++) {
+      const x = hash(n, 1, 11) * CW, y = 220 + hash(n, 2, 11) * 250;
+      if (Math.abs(x - river(y)) < 18 || distToRoute(M.ROUTES.start.concat(['R3', 'X']), x, y) < 14) continue;
+      forest(x, y);
+    }
+    // bridge where the road crosses the river
+    const by = 326, bx = river(by);
+    R(g, bx - 10, by - 4, 20, 8, INK); R(g, bx - 9, by - 3, 18, 6, '#8a5a2b');
+    worldBg = c;
+  }
+
+  function dotted(g, nodes, color, step, size) {
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const a = WN[nodes[i]], b = WN[nodes[i + 1]];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      for (let d = 0; d < len; d += step) { const [x, y] = lerp(a, b, d / len); R(g, Math.round(x) - size / 2, Math.round(y) - size / 2, size, size, color); }
+    }
+  }
+
+  function drawWorld(now) {
+    const s = S(), g = ctx, inc = s.incident, cv = s.caravan;
+    if (!worldBg) buildWorldBg();
+    g.drawImage(worldBg, 0, 0);
+    const blockedNow = cv && cv.status === 'blocked';
+    const passSel = ui.sel && ui.sel.kind === 'world' && ui.sel.what === 'pass';
+    if (blockedNow || passSel) dotted(g, M.ROUTES.pass, 'rgba(255,240,180,.55)', 5, 6);
+    dotted(g, M.ROUTES.start.concat(['R3', 'X']), '#5a3c1e', 7, 4);
+    dotted(g, M.ROUTES.pass, '#efeadf', 7, 3);
+    // colony
+    const [cx, cy] = WN.C;
+    R(g, cx - 12, cy - 8, 24, 16, INK); R(g, cx - 11, cy - 4, 22, 11, '#9b968c'); R(g, cx - 13, cy - 12, 26, 6, INK); R(g, cx - 12, cy - 11, 24, 4, '#a63d2e'); R(g, cx - 2, cy + 1, 5, 6, '#4a2e17');
+    // camp
+    const [xx, xy] = WN.X;
+    for (let i = 0; i < 12; i++) R(g, xx - i, xy - 12 + i, i * 2 + 1, 1, i === 11 ? INK : '#c9a55a');
+    R(g, xx - 1, xy - 6, 3, 6, '#4a2e17');
+    if (inc && inc.kind === 'caravan' && inc.stage !== 'returning') {
+      R(g, xx + 14, xy - 8, 6, 9, INK); R(g, xx + 15, xy - 7, 4, 3, '#f0c39a'); R(g, xx + 15, xy - 4, 4, 4, inc.traveler.shirt);
+      if (inc.deadlineT != null && inc.stage === 'setback') {
+        const left = Math.max(0, (inc.deadlineT - s.t) / (inc.deadlineT - inc.startT));
+        R(g, xx - 16, xy + 8, 34, 6, INK); R(g, xx - 15, xy + 9, 32 * left, 4, left > 0.3 ? '#4a9ad8' : '#d8323c');
+      }
+    }
+    // blockage
+    if (inc && inc.kind === 'caravan' && inc.stage === 'setback') {
+      const [bx, by] = blockagePos();
+      if (!inc.cleared) {
+        if (inc.reportIn && inc.cause === 'tree') { R(g, bx - 10, by - 3, 20, 6, INK); R(g, bx - 9, by - 2, 18, 4, '#6b4a23'); R(g, bx + 5, by - 7, 6, 6, '#2e5e27'); }
+        else if (inc.reportIn) { for (const [ox, oy, sz] of [[-8, 0, 7], [-1, -4, 8], [5, 1, 6]]) { R(g, bx + ox, by + oy - sz / 2, sz, sz, INK); R(g, bx + ox + 1, by + oy - sz / 2 + 1, sz - 2, sz - 2, '#8d8a84'); } }
+        else { R(g, bx - 7, by - 7, 14, 14, INK); R(g, bx - 6, by - 6, 12, 12, '#d8c048'); g.fillStyle = INK; g.font = 'bold 11px monospace'; g.fillText('?', bx - 3, by + 4); }
+        if (!inc.reportIn && cv && cv.status === 'blocked') {
+          const f = (Math.sin(now / 400) + 1) / 2;
+          const [sx, sy] = lerp(WN.R2, blockagePos(), 0.3 + 0.6 * f);
+          R(g, sx - 2, sy - 6, 5, 7, INK); R(g, sx - 1, sy - 5, 3, 2, '#f0c39a');
+        }
+      }
+    }
+    // caravan
+    const cp = caravanPos();
+    if (cp) {
+      const [px, py] = cp.map(Math.round);
+      const bob = cv.status === 'outbound' || cv.status === 'returning' ? Math.round(Math.sin(now / 120)) : 0;
+      R(g, px - 9, py - 7 + bob, 18, 10, INK); R(g, px - 8, py - 6 + bob, 16, 6, '#e8dcc0'); R(g, px - 8, py - 1 + bob, 16, 2, '#8a5a2b');
+      R(g, px - 7, py + 3, 4, 4, INK); R(g, px + 3, py + 3, 4, 4, INK);
+      cv.members.forEach((id, n) => {
+        const c = s.colonists.find((o) => o.id === id);
+        if (c) { R(g, px - 6 + n * 7, py - 11 + bob, 5, 5, INK); R(g, px - 5 + n * 7, py - 10 + bob, 3, 3, c.shirt); }
+      });
+      if (cv.status === 'clearing') {
+        const f = Math.min(1, cv.clear / M.CLEAR_HOURS);
+        R(g, px - 10, py - 16, 20, 4, INK); R(g, px - 9, py - 15, 18 * f, 2, '#6fe07a');
+      }
+      if (cv.status === 'blocked') { R(g, px + 8, py - 18, 7, 9, INK); R(g, px + 9, py - 17, 5, 7, '#ffd23d'); R(g, px + 11, py - 16, 1, 3, INK); R(g, px + 11, py - 12, 1, 1, INK); }
+    }
+    g.fillStyle = INK;
+    g.font = '10px sans-serif';
+    const label = (t, x, y) => { g.fillStyle = 'rgba(255,254,250,.85)'; const w = g.measureText(t).width; g.fillRect(x - 2, y - 9, w + 4, 12); g.fillStyle = INK; g.fillText(t, x, y); };
+    label('Colony', cx - 16, cy + 22);
+    label(inc && inc.kind === 'caravan' && inc.stage !== 'returning' ? `${inc.traveler.name}'s camp` : 'Eastern camp', xx - 26, xy + 26);
+    label('Mountain pass', WN.P2[0] - 30, WN.P2[1] - 12);
+    label('Old road', WN.R3[0] - 10, WN.R3[1] + 20);
+    if (ui.sel && ui.sel.kind === 'world') {
+      const w = ui.sel.what;
+      const pos = w === 'caravan' ? caravanPos() : w === 'blockage' ? blockagePos() : w === 'camp' ? WN.X : w === 'colony' ? WN.C : null;
+      if (pos) brackets(g, pos[0] - 14, pos[1] - 14, 28, 28);
+    }
+  }
+
+  // ---------- colony map drawing ----------
+  function darkness(hr) {
+    if (hr >= 7 && hr <= 18) return 0;
+    if (hr > 18 && hr < 21) return ((hr - 18) / 3) * 0.55;
+    if (hr >= 21 || hr < 5) return 0.55;
+    return ((7 - hr) / 2) * 0.55;
+  }
+  function brackets(g, x, y, w, hh) {
+    const c = '#ffd23d', L = 4;
+    for (const [ax, ay, dx, dy] of [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + hh, 1, -1], [x + w, y + hh, -1, -1]]) {
+      R(g, dx > 0 ? ax : ax - L, ay - (dy > 0 ? 0 : 1), L, 1, c);
+      R(g, ax - (dx > 0 ? 0 : 1), dy > 0 ? ay : ay - L, 1, L, c);
+    }
+  }
+  function bar(g, x, y, f, col) { R(g, x, y, 14, 3, INK); R(g, x + 1, y + 1, Math.round(12 * Math.max(0, Math.min(1, f))), 1, col); }
+
+  function thingSprite(th, now) {
+    const f = Math.floor(now / 250) % 2;
+    switch (th.type) {
+      case 'bed': return SPR.bed();
+      case 'table': return SPR.table();
+      case 'heater': return SPR.heater(th.broken ? 0 : 1, f);
+      case 'stove': return SPR.stove(f);
+      case 'campfire': return SPR.campfire(f);
+      case 'bush': return SPR.bush(!!th.berries);
+      case 'keeper': return SPR.keeper();
+      default: return null;
+    }
+  }
+
+  function drawThing(g, th, now) {
+    const px = th.x * TS, py = th.y * TS;
+    if (th.bp) g.globalAlpha = 0.45;
+    if (th.type === 'wall') drawWall(g, px, py, th.x, th.y);
+    else if (th.type === 'door') drawDoor(g, px, py);
+    else if (th.type === 'tree') g.drawImage(SPR.tree(th.variant || 0), px, py - 6);
+    else { const sp = thingSprite(th, now); if (sp) g.drawImage(sp, px, py); }
+    g.globalAlpha = 1;
+    if (th.bp) {
+      g.fillStyle = 'rgba(90,160,255,.28)';
+      g.fillRect(px, py, TS, TS);
+      R(g, px, py, TS, 1, '#8cc4ff'); R(g, px, py + 15, TS, 1, '#8cc4ff'); R(g, px, py, 1, TS, '#8cc4ff'); R(g, px + 15, py, 1, TS, '#8cc4ff');
+    }
+  }
+
+  function drawOverlays(g, th, now) {
+    const px = th.x * TS, py = th.y * TS;
+    if (th.bp && th.progress > 0) bar(g, px + 1, py - 4, th.progress / M.DEFS[th.type].work, '#8cc4ff');
+    if (th.des === 'chop') g.drawImage(SPR.axe(), px, py - 6);
+    if (th.des === 'harvest') g.drawImage(SPR.pick(), px, py - 2);
+    if (th.type === 'tree' && th.progress > 0) bar(g, px + 1, py - 9, th.progress / 1.2, '#e0b64a');
+    if (th.type === 'heater' && th.broken) {
+      for (let k = 0; k < 3; k++) {
+        const ph = ((now / 1400) + k / 3) % 1;
+        const sx = px + 7 + Math.sin(ph * 6 + k) * 3, sy = py + 1 - ph * 14;
+        g.fillStyle = `rgba(90,90,90,${0.7 * (1 - ph)})`;
+        g.fillRect(Math.round(sx), Math.round(sy), 3, 3);
+      }
+      const badge = th.repairOrdered ? '#6fe07a' : th.diagnosis ? '#ffd23d' : '#d8323c';
+      R(g, px + 11, py - 8, 7, 8, INK); R(g, px + 12, py - 7, 5, 6, badge); R(g, px + 14, py - 6, 1, 2, INK); R(g, px + 14, py - 3, 1, 1, INK);
+      if (th.repairOrdered && th.repairProgress > 0) bar(g, px + 1, py - 12, th.repairProgress / M.HEATER_CAUSES[th.diagnosis].work, '#6fe07a');
+    }
+  }
+
+  function jobProgress(c) {
+    const j = c.job;
+    if (!j || j.stage !== 'work') return null;
+    const th = j.targetId != null ? q.byId(j.targetId) : null;
+    const inc = S().incident;
+    switch (j.kind) {
+      case 'build': return th && th.progress != null ? th.progress / M.DEFS[th.type].work : null;
+      case 'repair': return th && th.diagnosis ? (th.repairProgress || 0) / M.HEATER_CAUSES[th.diagnosis].work : null;
+      case 'chop': return th ? (th.progress || 0) / 1.2 : null;
+      case 'harvest': return th ? (th.progress || 0) / 0.8 : null;
+      case 'inspect': return inc && inc.reportT ? (S().t - inc.startT) / (inc.reportT - inc.startT) : null;
+      default: return null;
+    }
+  }
+
+  function drawColonist(g, c, now) {
+    const px = Math.round(c.x * TS), py = Math.round(c.y * TS);
+    const bedHere = c.sleeping && q.thingAt(Math.round(c.x), Math.round(c.y));
+    if (c.sleeping && bedHere && bedHere.type === 'bed') {
+      g.drawImage(colonistSprite(c, 0, false, true), px + 3, py);
+      const ph = (now / 1600) % 1;
+      g.fillStyle = `rgba(255,255,255,${1 - ph})`;
+      g.font = 'bold 7px monospace';
+      g.fillText('z', px + 12 + ph * 3, py + 2 - ph * 8);
+      return;
+    }
+    const moving = c.job && c.job.stage === 'walk' && c.path.length;
+    const frame = moving ? Math.floor(now / 160) % 2 : 0;
+    g.fillStyle = 'rgba(0,0,0,.28)';
+    g.fillRect(px + 3, py + 14, 10, 2);
+    g.drawImage(colonistSprite(c, frame, c.facing < 0, false), px + 3, py + 1 - (moving && frame ? 1 : 0));
+    const prog = jobProgress(c);
+    if (prog != null) bar(g, px + 1, py - 4, prog, '#ffd23d');
+    if (c.cold > 0.15) { const bx = px + 13, by = py - 1; R(g, bx, by + 1, 5, 1, '#bfe3ff'); R(g, bx + 2, by - 1, 1, 5, '#bfe3ff'); }
+  }
+
+  function drawMap(now) {
+    const s = S(), g = ctx;
+    if (!terrainCanvas) buildTerrain();
+    g.drawImage(terrainCanvas, 0, 0);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (s.terrain[y * W + x] !== M.T.WATER) continue;
+      const k = hash(x, y, 1);
+      const sx = Math.floor((k * 16 + now / 400) % 14);
+      R(g, x * TS + sx, y * TS + 3 + Math.floor(k * 9), 3, 1, '#6ea3d6');
+    }
+    for (const [x, y] of s.zones.food) { g.fillStyle = 'rgba(255,214,110,.16)'; g.fillRect(x * TS, y * TS, TS, TS); }
+    for (const [x, y] of s.zones.wood) { g.fillStyle = 'rgba(255,214,110,.16)'; g.fillRect(x * TS, y * TS, TS, TS); }
+    if (s.stock.food > 0) g.drawImage(SPR.crate(), s.zones.food[0][0] * TS, s.zones.food[0][1] * TS);
+    if (s.stock.food > 18) g.drawImage(SPR.crate(), s.zones.food[1][0] * TS, s.zones.food[1][1] * TS);
+    if (s.stock.wood > 0) g.drawImage(SPR.logs(), s.zones.wood[0][0] * TS, s.zones.wood[0][1] * TS);
+    if (s.stock.wood > 40) g.drawImage(SPR.logs(), s.zones.wood[1][0] * TS, s.zones.wood[1][1] * TS);
+
+    const drawables = [];
+    for (const th of s.things) drawables.push([th.y + (th.type === 'tree' ? 0.2 : 0), 0, th]);
+    for (const c of s.colonists) if (!c.away) drawables.push([c.y + 0.1, 1, c]);
+    drawables.sort((a, b) => a[0] - b[0]);
+    for (const [, kind, obj] of drawables) {
+      if (kind === 0) drawThing(g, obj, now);
+      else drawColonist(g, obj, now);
+    }
+
+    // frost on cold rooms
+    for (const r of q.rooms()) {
+      if (r.outdoors || r.temp >= 15) continue;
+      const a = Math.min(0.5, (15 - r.temp) / 30);
+      g.fillStyle = `rgba(200,232,255,${a})`;
+      for (const i of r.tiles) g.fillRect((i % W) * TS, ((i / W) | 0) * TS, TS, TS);
+      if (r.temp < 0) for (const i of r.tiles) {
+        const x = i % W, y = (i / W) | 0;
+        if (hash(x, y, 21) < 0.5) R(g, x * TS + Math.floor(hash(x, y, 22) * 14), y * TS + Math.floor(hash(x, y, 23) * 14), 2, 1, '#ffffff');
+      }
+    }
+
+    const dark = darkness(s.t % 24);
+    if (dark > 0) {
+      g.fillStyle = `rgba(12,20,52,${dark})`;
+      g.fillRect(0, 0, CW, CH);
+      g.globalCompositeOperation = 'lighter';
+      for (const th of s.things) {
+        const hot = (th.type === 'campfire' || th.type === 'stove' || (th.type === 'heater' && !th.broken)) && !th.bp;
+        if (!hot) continue;
+        const cx = th.x * TS + 8, cy = th.y * TS + 8;
+        const grd = g.createRadialGradient(cx, cy, 2, cx, cy, 56);
+        grd.addColorStop(0, `rgba(255,170,80,${dark * 0.75})`);
+        grd.addColorStop(1, 'rgba(255,170,80,0)');
+        g.fillStyle = grd;
+        g.fillRect(cx - 56, cy - 56, 112, 112);
+      }
+      g.globalCompositeOperation = 'source-over';
+    }
+
+    for (const th of s.things) drawOverlays(g, th, now);
+    g.font = '7px sans-serif';
+    g.textAlign = 'center';
+    for (const c of s.colonists) {
+      if (c.away) continue;
+      const x = Math.round(c.x * TS) + 8, y = Math.round(c.y * TS) + 23;
+      g.lineWidth = 2;
+      g.strokeStyle = 'rgba(23,21,18,.85)';
+      g.strokeText(c.name, x, y);
+      g.fillStyle = '#fffefa';
+      g.fillText(c.name, x, y);
+    }
+    g.textAlign = 'start';
+
+    if (ui.hover && ui.tool) {
+      const { x, y } = ui.hover;
+      if (M.BUILDABLE.includes(ui.tool.kind)) {
+        const okHere = q.canBuild(ui.tool.kind, x, y);
+        g.globalAlpha = 0.6;
+        if (ui.tool.kind === 'wall') drawWall(g, x * TS, y * TS, x, y);
+        else if (ui.tool.kind === 'door') drawDoor(g, x * TS, y * TS);
+        else g.drawImage(spriteFor(ui.tool.kind), x * TS, y * TS);
+        g.globalAlpha = 1;
+        g.fillStyle = okHere ? 'rgba(111,224,122,.3)' : 'rgba(216,50,60,.35)';
+        g.fillRect(x * TS, y * TS, TS, TS);
+      }
+    }
+    if (ui.drag && ui.tool && !M.BUILDABLE.includes(ui.tool.kind)) {
+      const d = ui.drag;
+      const x0 = Math.min(d.x0, d.x1), y0 = Math.min(d.y0, d.y1), x1 = Math.max(d.x0, d.x1), y1 = Math.max(d.y0, d.y1);
+      g.fillStyle = ui.tool.kind === 'cancel' ? 'rgba(216,50,60,.2)' : 'rgba(255,214,110,.22)';
+      g.fillRect(x0 * TS, y0 * TS, (x1 - x0 + 1) * TS, (y1 - y0 + 1) * TS);
+      g.strokeStyle = '#ffd23d';
+      g.lineWidth = 1;
+      g.strokeRect(x0 * TS + 0.5, y0 * TS + 0.5, (x1 - x0 + 1) * TS - 1, (y1 - y0 + 1) * TS - 1);
+    }
+    const sel = ui.sel;
+    if (sel && sel.kind === 'colonist') {
+      const c = s.colonists.find((o) => o.id === sel.id);
+      if (c && !c.away) brackets(g, Math.round(c.x * TS), Math.round(c.y * TS), TS, TS);
+    } else if (sel && sel.kind === 'thing') {
+      const th = q.byId(sel.id);
+      if (th) brackets(g, th.x * TS, th.y * TS, TS, TS);
+    } else if (sel && sel.kind === 'tile') brackets(g, sel.x * TS, sel.y * TS, TS, TS);
+  }
+
+  function draw(now) {
+    if (ui.view === 'map') drawMap(now);
+    else drawWorld(now);
+  }
+
+  // ---------- HUD ----------
+  let lastBarSig = '', lastLetterSig = '', lastInspectSig = '', inspectLive = null;
+
+  function activity(c) {
+    if (c.away) {
+      const cv = S().caravan;
+      return cv && cv.status === 'blocked' ? 'With the caravan, waiting at the blockage' : cv && cv.status === 'returning' ? 'With the caravan, heading home' : 'With the caravan';
+    }
+    const j = c.job;
+    if (!j) return 'Idle';
+    const th = j.targetId != null ? q.byId(j.targetId) : null;
+    const going = j.stage === 'walk' ? 'Going to ' : '';
+    switch (j.kind) {
+      case 'sleep': return c.sleeping ? 'Sleeping' : 'Going to bed';
+      case 'eat': return j.stage === 'walk' ? 'Going to eat' : 'Eating';
+      case 'build': return `${going ? 'Going to build' : 'Building'} ${th ? M.DEFS[th.type].label.toLowerCase() : ''}`.trim();
+      case 'repair': return j.stage === 'walk' ? 'Going to repair the heater' : 'Repairing the heater';
+      case 'chop': return j.stage === 'walk' ? 'Going to chop a tree' : 'Chopping a tree';
+      case 'harvest': return j.stage === 'walk' ? 'Going to pick berries' : 'Picking berries';
+      case 'inspect': return j.stage === 'walk' ? 'Going to inspect the heater' : 'Inspecting the heater';
+      default: return 'Wandering';
+    }
+  }
+
+  function updateBar() {
+    const s = S();
+    const sig = s.colonists.map((c) => `${c.id}${c.away}${c.sleeping}${c.cold > 0.15}${ui.sel && ui.sel.kind === 'colonist' && ui.sel.id === c.id}`).join('|');
+    if (sig === lastBarSig) return;
+    lastBarSig = sig;
+    el.bar.replaceChildren(...s.colonists.map((c) => {
+      const pic = document.createElement('canvas');
+      pic.width = 10;
+      pic.height = 14;
+      pic.getContext('2d').drawImage(colonistSprite(c, 0, false, false), 0, 0);
+      pic.className = 'mm-portrait';
+      const on = ui.sel && ui.sel.kind === 'colonist' && ui.sel.id === c.id;
+      return h('button', {
+        type: 'button', class: `mm-col${on ? ' is-on' : ''}${c.away ? ' is-away' : ''}`,
+        on: { click: () => { if (c.away) setView('world'); else setView('map'); select({ kind: 'colonist', id: c.id }); } },
+      }, pic, h('span', null, c.name), c.away ? h('small', null, 'caravan') : c.sleeping ? h('small', null, 'asleep') : c.cold > 0.15 ? h('small', { class: 'is-cold' }, 'cold') : null);
+    }));
+  }
+
+  function updateLetters() {
+    const s = S();
+    const sig = s.letters.map((l) => `${l.id}${l.read}${!!l.actions}`).join('|');
+    if (sig === lastLetterSig) return;
+    lastLetterSig = sig;
+    el.letters.replaceChildren(...s.letters.slice().reverse().map((l) => h('button', {
+      type: 'button', class: `mm-letter is-${l.kind}${l.read ? '' : ' is-new'}`, on: { click: () => openLetter(l.id) },
+    }, l.title)));
+  }
+
+  function updateTop() {
+    const s = S();
+    el.clock.textContent = clock(s.t);
+    const out = q.outdoorTemp();
+    el.weather.textContent = `${s.weather.label ? `${s.weather.label} · ` : ''}${Math.round(out)}°C outside`;
+    el.weather.classList.toggle('is-cold', out < 2);
+    el.wood.textContent = s.stock.wood;
+    el.food.textContent = s.stock.food;
+  }
+
+  function hoverText() {
+    if (!ui.hover || ui.view !== 'map') return '';
+    const { x, y } = ui.hover;
+    if (x < 0 || y < 0 || x >= W || y >= H) return '';
+    const r = q.roomAt(x, y);
+    const th = q.thingAt(x, y);
+    const place = r && !r.outdoors ? `${q.roomName(r)} · ${Math.round(r.temp)}°C` : `Outdoors · ${Math.round(q.outdoorTemp())}°C`;
+    return th ? `${M.DEFS[th.type].label}${th.bp ? ' (planned)' : ''} — ${place}` : place;
+  }
+
+  // inspect pane: rebuilt only when its signature changes, live numbers refreshed in between
+  function gizmo(label, onClick, disabledReason) {
+    return h('button', { type: 'button', class: 'mm-btn mm-gizmo', disabled: !!disabledReason, title: disabledReason || null, on: { click: onClick } },
+      label, disabledReason ? h('small', null, disabledReason) : null);
+  }
+  function needBar(label, v, col) {
+    const fill = h('span', { style: `width:${Math.round(v * 100)}%;background:${col}` });
+    return h('div', { class: 'mm-need' }, h('span', null, label), h('i', null, fill));
+  }
+
+  function inspectContent() {
+    const s = S(), sel = ui.sel, inc = s.incident;
+    if (!sel) return { sig: 'none', build: () => [h('p', { class: 'mm-muted' }, ui.view === 'map' ? 'Click a colonist or an object to inspect it.' : 'Click the caravan, the road, the pass, or the camp.')] };
+    if (sel.kind === 'colonist') {
+      const c = s.colonists.find((o) => o.id === sel.id);
+      if (!c) return { sig: 'gone', build: () => [] };
+      return {
+        sig: `c${c.id}${Math.round(c.food * 20)}${Math.round(c.rest * 20)}${Math.round(q.health(c) * 20)}${activity(c)}`,
+        build: () => {
+          const conds = [];
+          if (c.cold > 0.05) conds.push(`Hypothermia ${Math.round(c.cold * 100)}%`);
+          if (c.weak > 0.05) conds.push(`Weakened ${Math.round(c.weak * 100)}%`);
+          return [h('h4', null, c.name), h('p', null, activity(c)),
+            needBar('Food', c.food, '#e0b64a'), needBar('Rest', c.rest, '#6a9bd0'), needBar('Health', q.health(c), '#6fe07a'),
+            conds.length ? h('p', { class: 'mm-warn' }, conds.join(' · ')) : null];
+        },
+      };
+    }
+    if (sel.kind === 'tile') {
+      return { sig: `t${sel.x},${sel.y}`, build: () => { const r = q.roomAt(sel.x, sel.y); return [h('h4', null, r && !r.outdoors ? q.roomName(r) : 'Outdoors'), h('p', null, r && !r.outdoors ? `${Math.round(r.temp)}°C inside` : `${Math.round(q.outdoorTemp())}°C`)]; } };
+    }
+    if (sel.kind === 'thing') {
+      const th = q.byId(sel.id);
+      if (!th) return { sig: 'gone', build: () => [h('p', { class: 'mm-muted' }, 'Gone.')] };
+      const d = M.DEFS[th.type];
+      const r = q.roomAt(th.x, th.y);
+      const where = r && !r.outdoors ? `${q.roomName(r)} · ${Math.round(r.temp)}°C` : null;
+      if (th.bp) {
+        return { sig: `bp${th.id}${Math.round((th.progress || 0) * 10)}${th.paid}`, build: () => [
+          h('h4', null, `${d.label} (planned)`),
+          h('p', null, `${d.cost} wood${th.paid ? ' (paid)' : s.stock.wood < d.cost ? ' — not enough wood yet' : ''}. ${Math.round(((th.progress || 0) / d.work) * 100)}% built.`),
+          where ? h('p', { class: 'mm-muted' }, where) : null,
+          h('div', { class: 'mm-gizmos' }, gizmo('Cancel plan', () => order({ type: 'designate', mode: 'cancel', x0: th.x, y0: th.y, x1: th.x, y1: th.y }))),
+        ] };
+      }
+      if (th.type === 'heater') {
+        const heatingInc = inc && inc.kind === 'heating' && inc.heaterId === th.id ? inc : null;
+        const who = heatingInc && s.colonists.find((c) => c.id === heatingInc.inspectorId);
+        return {
+          sig: `h${th.id}${th.broken}${th.diagnosis}${th.repairOrdered}${!!heatingInc}${Math.round((th.repairProgress || 0) * 10)}${where}`,
+          build: () => {
+            const out = [h('h4', null, 'Heater'), where ? h('p', { class: 'mm-muted' }, where) : null];
+            if (!th.broken) out.push(h('p', null, 'Working. Keeps the room around 21°C.'));
+            else if (!th.diagnosis) {
+              const live = h('span');
+              inspectLive = () => { live.textContent = heatingInc ? fmtH(heatingInc.reportT - S().t) : '—'; };
+              out.push(h('p', null, 'Broken. ', who ? `${who.name} is inspecting it; report in ` : 'Report in ', live, '.'));
+              if (heatingInc && heatingInc.deadlineT != null) {
+                const dl = h('span');
+                const prev = inspectLive;
+                inspectLive = () => { prev(); dl.textContent = fmtH(heatingInc.deadlineT - S().t); };
+                out.push(h('p', { class: 'mm-warn' }, 'Freezing in about ', dl, '.'));
+              }
+            } else {
+              out.push(h('p', null, M.HEATER_CAUSES[th.diagnosis].finding));
+              if (heatingInc && heatingInc.deadlineT != null) {
+                const dl = h('span');
+                inspectLive = () => { dl.textContent = fmtH(heatingInc.deadlineT - S().t); };
+                out.push(h('p', { class: 'mm-warn' }, 'Freezing in about ', dl, '.'));
+              }
+            }
+            if (th.broken) {
+              out.push(h('div', { class: 'mm-gizmos' }, th.repairOrdered
+                ? gizmo('Cancel repair', () => order({ type: 'cancel-repair', id: th.id }))
+                : gizmo('Repair', () => order({ type: 'repair', id: th.id }), th.diagnosis ? null : 'Waiting for the inspection')));
+              if (th.repairOrdered) out.push(h('p', { class: 'mm-muted' }, `Repair ordered. ${Math.round(((th.repairProgress || 0) / M.HEATER_CAUSES[th.diagnosis].work) * 100)}% done.`));
+            }
+            return out;
+          },
+        };
+      }
+      if (th.type === 'tree') return { sig: `tr${th.id}${th.des}`, build: () => [h('h4', null, 'Tree'), h('p', null, 'Gives 10 wood when chopped.'), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'chop' ? 'Don’t chop' : 'Chop', () => order({ type: 'designate', mode: th.des === 'chop' ? 'cancel' : 'chop', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
+      if (th.type === 'bush') return { sig: `bu${th.id}${th.des}${th.berries}`, build: () => [h('h4', null, 'Berry bush'), h('p', null, th.berries ? 'Ripe. Gives 6 food.' : `Regrowing, ripe in ${fmtH(th.regrowAt - s.t)}.`), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'harvest' ? 'Stop harvesting' : 'Harvest', () => order({ type: 'designate', mode: th.des === 'harvest' ? 'cancel' : 'harvest', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
+      if (th.type === 'keeper') return { sig: 'keeper', build: () => [h('h4', null, 'The Archivist'), h('p', null, 'She has been watching how the colony handles trouble.'), h('div', { class: 'mm-gizmos' }, gizmo('Talk to her', () => openModal('reflect')))] };
+      return { sig: `o${th.id}${where}`, build: () => [h('h4', null, d.label), where ? h('p', { class: 'mm-muted' }, where) : null, d.heat ? h('p', null, 'Heats the room it stands in.') : null] };
+    }
+    if (sel.kind === 'world') return worldInspect(sel.what);
+    return { sig: 'x', build: () => [] };
+  }
+
+  function worldInspect(what) {
+    const s = S(), inc = s.incident && s.incident.kind === 'caravan' ? s.incident : null, cv = s.caravan;
+    const names = cv ? cv.members.map((id) => (s.colonists.find((c) => c.id === id) || {}).name).join(' and ') : '';
+    const decisionGizmos = () => {
+      if (!inc || inc.stage !== 'setback' || !cv || cv.status !== 'blocked') return null;
+      const clearReason = !inc.reportIn ? 'Waiting for the scout report' : !M.BLOCK_CAUSES[inc.cause].clearable ? 'A rockslide can’t be cleared quickly' : null;
+      return h('div', { class: 'mm-gizmos' },
+        gizmo('Take the mountain pass', () => order({ type: 'caravan-reroute' })),
+        gizmo('Clear the road', () => order({ type: 'caravan-clear' }), clearReason));
+    };
+    const deadlineLine = () => {
+      if (!inc || inc.deadlineT == null || inc.stage !== 'setback') return null;
+      const dl = h('span');
+      const prev = inspectLive;
+      inspectLive = () => { if (prev) prev(); dl.textContent = fmtH(inc.deadlineT - S().t); };
+      return h('p', { class: 'mm-warn' }, `${inc.traveler.name} has water for about `, dl, '.');
+    };
+    const sigBase = `w${what}${inc && inc.stage}${cv && cv.status}${inc && inc.reportIn}${inc && inc.cleared}`;
+    switch (what) {
+      case 'caravan':
+        if (!cv) return { sig: `${sigBase}none`, build: () => [h('h4', null, 'No caravan out'), h('p', { class: 'mm-muted' }, 'Caravans leave when a traveler asks for help.')] };
+        return { sig: sigBase, build: () => {
+          inspectLive = null;
+          const eta = h('span');
+          const st = cv.status === 'blocked' ? 'Waiting at the blockage on the old road.'
+            : cv.status === 'clearing' ? 'Clearing the fallen tree.'
+              : cv.status === 'returning' ? 'Heading home.'
+                : cv.route.includes('P1') ? 'Travelling over the mountain pass.' : 'Travelling along the old road.';
+          const out = [h('h4', null, 'Caravan'), h('p', null, names), h('p', null, st)];
+          if (cv.status === 'outbound' || cv.status === 'returning') {
+            inspectLive = () => { eta.textContent = fmtH(etaHours()); };
+            out.push(h('p', { class: 'mm-muted' }, cv.status === 'returning' ? 'Home in about ' : 'At the camp in about ', eta, '.'));
+          }
+          out.push(deadlineLine(), decisionGizmos());
+          return out;
+        } };
+      case 'blockage':
+        return { sig: sigBase, build: () => {
+          inspectLive = null;
+          const out = [h('h4', null, 'Blockage on the old road')];
+          if (!inc || inc.stage === 'travel') out.push(h('p', { class: 'mm-muted' }, 'Nothing known yet.'));
+          else if (!inc.reportIn) {
+            const live = h('span');
+            inspectLive = () => { live.textContent = fmtH(inc.reportT - S().t); };
+            out.push(h('p', null, 'Unknown. The scout is looking; report in ', live, '.'));
+          } else out.push(h('p', null, M.BLOCK_CAUSES[inc.cause].finding));
+          out.push(h('p', { class: 'mm-muted' }, 'Past the blockage: about 2 hours to the camp.'), deadlineLine(), decisionGizmos());
+          return out;
+        } };
+      case 'pass':
+        return { sig: sigBase, build: () => [h('h4', null, 'Mountain pass'), h('p', null, 'Goes around the old road. About 5 hours from the blockage to the camp.'), deadlineLine(),
+          inc && inc.stage === 'setback' && cv && cv.status === 'blocked' ? h('div', { class: 'mm-gizmos' }, gizmo('Send the caravan this way', () => order({ type: 'caravan-reroute' }))) : null] };
+      case 'road':
+        return { sig: sigBase, build: () => [h('h4', null, 'Old road'), h('p', null, 'The usual way east. About 3.5 hours from the colony to the camp.')] };
+      case 'camp':
+        return { sig: sigBase, build: () => [h('h4', null, inc && inc.stage !== 'returning' ? `${inc.traveler.name}'s camp` : 'Eastern camp'),
+          h('p', null, inc && inc.stage !== 'returning' ? (inc.deadlineKind === 'urgent' ? `${inc.traveler.name} is stranded and short on water.` : `${inc.traveler.name} is safe and well supplied.`) : 'Nobody is waiting here.'), deadlineLine()] };
+      default:
+        return { sig: sigBase, build: () => [h('h4', null, 'Colony'), h('p', null, `${s.colonists.filter((c) => !c.away).length} colonists at home.`)] };
+    }
+  }
+
+  function etaHours() {
+    const cv = S().caravan;
+    if (!cv) return 0;
+    if (cv.status === 'returning') return M.RETURN_HOURS - cv.prog;
+    let left = 0;
+    for (let i = cv.seg; i < cv.route.length - 1; i++) left += q.segHours(cv.route[i], cv.route[i + 1]);
+    left -= cv.prog;
+    if (!cv.route.includes('X')) left += q.segHours('R2', 'R3') + q.segHours('R3', 'X');
+    return left;
+  }
+
+  function updateInspect() {
+    const c = inspectContent();
+    if (c.sig !== lastInspectSig) {
+      lastInspectSig = c.sig;
+      inspectLive = null;
+      el.inspect.replaceChildren(...c.build().filter(Boolean));
+    }
+    if (inspectLive) inspectLive();
+    // selecting the heater or blockage while the report arrives still counts as reading it
+    const sel = ui.sel, inc = S().incident;
+    if (sel && inc && inc.reportIn) {
+      if (sel.kind === 'thing' && sel.id === inc.heaterId) M.command({ type: 'inspect', target: { kind: 'thing', id: sel.id } });
+      if (sel.kind === 'world' && sel.what === 'blockage') M.command({ type: 'inspect', target: { kind: 'world', what: 'blockage' } });
+    }
+  }
+
+  function updateUI() {
+    updateTop();
+    updateBar();
+    updateLetters();
+    updateInspect();
+    el.hover.textContent = hoverText();
+    el.hover.hidden = !el.hover.textContent;
+  }
+
+  // ---------- modals ----------
+  function openModal(kind, arg) {
+    ui.modal = { kind, arg };
+    renderModal();
+  }
+  function closeModal() {
+    ui.modal = null;
+    el.modal.hidden = true;
+    el.modal.replaceChildren();
+    lastInspectSig = '';
+  }
+  function modalFrame(title, ...body) {
+    return h('div', { class: 'mm-dialog', role: 'dialog', 'aria-label': title },
+      h('div', { class: 'mm-dialog-head' }, h('strong', null, title), h('button', { type: 'button', class: 'mm-btn mm-btn-s', 'aria-label': 'Close', on: { click: closeModal } }, '✕')),
+      h('div', { class: 'mm-dialog-body' }, ...body));
+  }
+  function renderModal() {
+    const m = ui.modal;
+    if (!m) return closeModal();
+    let node;
+    if (m.kind === 'letter') node = letterModal(m.arg);
+    else if (m.kind === 'work') node = workModal();
+    else if (m.kind === 'reflect') node = reflectModal();
+    else if (m.kind === 'evidence') node = evidenceModal();
+    else if (m.kind === 'propose') node = proposeModal();
+    else if (m.kind === 'menu') node = menuModal();
+    el.modal.replaceChildren(node);
+    el.modal.hidden = false;
+  }
+
+  function openLetter(id) {
+    M.command({ type: 'read-letter', id });
+    lastLetterSig = '';
+    openModal('letter', id);
+  }
+  function letterModal(id) {
+    const s = S();
+    const l = s.letters.find((x) => x.id === id);
+    if (!l) return modalFrame('Letter', h('p', null, 'This letter is gone.'));
+    const actions = (l.actions || []).map((a) => {
+      let label = a.label;
+      if (a.cmd.type === 'caravan-send') {
+        const names = q.caravanCandidates().map((c) => c.name);
+        label = names.length >= 2 ? `Send ${names.join(' and ')}` : 'Not enough healthy colonists';
+      }
+      return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', on: { click: () => { const r = order(a.cmd); if (r.ok) { closeModal(); if (a.cmd.type === 'caravan-send') { setView('world'); select({ kind: 'world', what: 'caravan' }); } } } } }, label);
+    });
+    const jump = l.focus ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { closeModal(); focusOn(l.focus); } } }, l.focus.world ? 'Show on world map' : 'Show') : null;
+    return modalFrame(l.title,
+      h('p', { class: 'mm-letter-meta' }, clock(l.t)),
+      ...l.body.split('\n\n').map((p) => h('p', { class: 'mm-letter-body' }, p)),
+      h('div', { class: 'mm-actions' }, actions, jump,
+        !l.actions ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.command({ type: 'dismiss-letter', id: l.id }); lastLetterSig = ''; closeModal(); } } }, 'Dismiss') : null));
+  }
+  function focusOn(f) {
+    if (f.world) { setView('world'); select({ kind: 'world', what: f.world }); return; }
+    setView('map');
+    if (f.thingId != null) select({ kind: 'thing', id: f.thingId });
+    if (f.colonistId != null) select({ kind: 'colonist', id: f.colonistId });
+  }
+
+  function workModal() {
+    const s = S();
+    const cell = (c, w) => {
+      const v = c.prio[w];
+      return h('td', null, h('button', {
+        type: 'button', class: `mm-prio p${v}`, 'aria-label': `${c.name} ${WORK_LABEL[w]} priority ${v || 'off'}`,
+        on: { click: () => { M.command({ type: 'priority', colonistId: c.id, work: w, value: v === 0 ? 1 : v === 4 ? 0 : v + 1 }); renderModal(); } },
+      }, v || ''));
+    };
+    return modalFrame('Work priorities',
+      h('p', { class: 'mm-muted' }, '1 is done first. Click to cycle 1 → 2 → 3 → 4 → off.'),
+      h('div', { class: 'mm-table-wrap' }, h('table', { class: 'mm-table mm-work' },
+        h('thead', null, h('tr', null, h('th', null, ''), M.WORK_TYPES.map((w) => h('th', null, WORK_LABEL[w])))),
+        h('tbody', null, s.colonists.map((c) => h('tr', null, h('th', null, c.name), M.WORK_TYPES.map((w) => cell(c, w))))))));
+  }
+
+  function menuModal() {
+    return modalFrame('Menu',
+      h('p', null, 'Your colony saves automatically in this browser.'),
+      h('div', { class: 'mm-actions' },
+        h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.save(); toast('Saved'); closeModal(); } } }, 'Save now'),
+        h('button', { type: 'button', class: 'mm-btn', on: { click: () => {
+          if (!confirm('Start a new colony? Your MMTI observations are kept.')) return;
+          M.newColony();
+          terrainCanvas = null;
+          ui.sel = null;
+          lastBarSig = lastLetterSig = lastInspectSig = '';
+          closeModal();
+        } } }, 'New colony')));
+  }
+
+  function reflectModal() {
+    const m = O.computeModel();
+    const cards = O.portraitCards(m);
+    const keeper = document.createElement('canvas');
+    keeper.width = 70;
+    keeper.height = 70;
+    const kg = keeper.getContext('2d');
+    kg.imageSmoothingEnabled = false;
+    if (window.PixelArt) window.PixelArt.draw(kg, 'keeper_a', window.PixelArt.PEOPLE_PALETTE, 5);
+    keeper.className = 'mm-keeper';
+    const idx = Math.min(ui.modal.arg || 0, Math.max(0, cards.length - 1));
+    const body = [h('div', { class: 'mm-keeper-row' }, keeper, h('p', { class: 'mm-speech' }, cards.length
+      ? 'I’ve been watching how you handle setbacks in the colony. Here is how I think you’d act somewhere else. Tell me whether it fits.'
+      : 'I don’t know you well enough yet. Keep looking after the colony and come back.'))];
+    if (cards.length) {
+      const card = cards[idx];
+      body.push(h('div', { class: 'mm-portrait-card' },
+        h('p', { class: 'mm-kicker' }, `Your MMTI · inferred portrait ${idx + 1} of ${cards.length}`),
+        h('blockquote', null, `“${card.text}”`),
+        h('p', { class: 'mm-muted' }, card.source),
+        feedbackRow(card, m),
+        h('div', { class: 'mm-actions mm-actions-split' },
+          h('button', { type: 'button', class: 'mm-btn', disabled: idx === 0, on: { click: () => { ui.modal.arg = idx - 1; renderModal(); } } }, '← Previous'),
+          h('button', { type: 'button', class: 'mm-btn', disabled: idx === cards.length - 1, on: { click: () => { ui.modal.arg = idx + 1; renderModal(); } } }, 'Next →'))));
+    }
+    const forming = O.DEADLINES.filter((d) => !m[d].released);
+    if (forming.length) {
+      body.push(h('div', { class: 'mm-forming' }, h('p', { class: 'mm-kicker' }, 'Still forming'), forming.map((d) => {
+        const b = m[d];
+        const note = b.enough ? 'No clear pattern yet, so no description.' : `${Math.min(b.n, O.RELEASE.minEpisodes)} of ${O.RELEASE.minEpisodes} decisions · ${b.types.size} of ${O.RELEASE.minEventTypes} kinds of trouble`;
+        return h('div', { class: 'mm-progress' },
+          h('div', { class: 'mm-progress-top' }, h('span', null, d === 'urgent' ? 'With a deadline' : 'Without a deadline'), h('span', null, note)),
+          h('div', { class: 'mm-progress-bar' }, h('span', { style: `width:${Math.min(100, (b.n / O.RELEASE.minEpisodes) * 100)}%` })));
+      })));
+    }
+    return modalFrame('The Archivist', ...body);
+  }
+
+  function feedbackRow(card, m) {
+    const prev = O.feedbackFor(card.key);
+    let verdict = prev ? prev.verdict : null;
+    const note = h('textarea', { class: 'mm-note', rows: '2', placeholder: 'Optional: what circumstance matters?', 'aria-label': 'Explanation' });
+    if (prev && prev.note) note.value = prev.note;
+    const status = h('span', { class: 'mm-saved' }, prev ? 'Saved.' : '');
+    const record = () => {
+      if (!verdict) return;
+      O.addFeedback({ key: card.key, verdict, note: note.value.trim(), counts: Object.fromEntries(O.DEADLINES.map((d) => [d, { n: m[d].n, switches: m[d].switches }])) });
+      status.textContent = 'Saved.';
+    };
+    const choices = [['fits', 'Fits'], ['doesnt_fit', 'Doesn’t fit'], ['depends', 'Depends']];
+    const buttons = choices.map(([id, label]) => {
+      const b = h('button', { type: 'button', class: `mm-btn mm-btn-s${verdict === id ? ' is-on' : ''}`, 'aria-pressed': String(verdict === id) }, label);
+      b.addEventListener('click', () => {
+        verdict = id;
+        buttons.forEach((o, i) => { const on = choices[i][0] === id; o.classList.toggle('is-on', on); o.setAttribute('aria-pressed', String(on)); });
+        record();
+      });
+      return b;
+    });
+    note.addEventListener('change', record);
+    return h('div', { class: 'mm-feedback' }, h('div', { class: 'mm-actions' }, buttons, status), note);
+  }
+
+  function evidenceModal() {
+    const m = O.computeModel();
+    const pct = (x) => `${Math.round(x * 100)}%`;
+    const eps = O.episodes().slice().reverse();
+    const actionLabel = { 'build-stove': 'Planned a wood stove', 'build-campfire': 'Planned a campfire', repair: 'Ordered the repair', 'reroute-pass': 'Took the mountain pass', 'clear-road': 'Cleared the road' };
+    const rel = (ep, t) => (t == null ? '—' : `+${(t - ep.startT).toFixed(1)}h`);
+    return modalFrame('Evidence',
+      h('p', null, 'Every description traces back to these counts. Rule ', h('code', null, O.RULE_VERSION),
+        ': the first order that commits to a next approach is the response. Before the report arrived means “changed plan first”; after reading the report means “waited for the report”. Estimates use (changes + 1) / (decisions + 2); a description needs 8 decisions across both kinds of trouble and at least 75% one way.'),
+      h('div', { class: 'mm-table-wrap' }, h('table', { class: 'mm-table' },
+        h('thead', null, h('tr', null, ['Condition', 'Decisions', 'Changed plan first', 'Waited for report', 'P(change plan)', 'Status'].map((t) => h('th', null, t)))),
+        h('tbody', null, O.DEADLINES.map((d) => {
+          const b = m[d];
+          return h('tr', null, h('td', null, d === 'urgent' ? 'Deadline' : 'No deadline'), h('td', null, b.n), h('td', null, b.switches), h('td', null, b.n - b.switches), h('td', null, pct(b.p)),
+            h('td', null, b.released ? `Released: ${b.released === 'switch' ? 'changes plan first' : 'waits for the report'}` : 'Collecting'));
+        })))),
+      h('h5', { class: 'mm-subhead' }, `Episodes (${eps.length})`),
+      eps.length ? h('div', { class: 'mm-table-wrap' }, h('table', { class: 'mm-table' },
+        h('thead', null, h('tr', null, ['Day', 'Event', 'Deadline', 'Report', 'Read', 'Decided', 'Order', 'Response'].map((t) => h('th', null, t)))),
+        h('tbody', null, eps.map((ep) => {
+          const r = O.classify(ep);
+          return h('tr', null,
+            h('td', null, ep.day), h('td', null, ep.eventType === 'heating' ? 'Heater broke' : 'Road blocked'),
+            h('td', null, ep.params.deadlineIn != null ? `+${ep.params.deadlineIn}h` : 'None'),
+            h('td', null, rel(ep, ep.reportReceivedAt)), h('td', null, rel(ep, ep.consultedAt)), h('td', null, rel(ep, ep.commitAt)),
+            h('td', null, actionLabel[ep.action] || '—'),
+            h('td', null, r ? (r === 'switch' ? 'Changed plan first' : 'Waited for report') : `Not scored (${O.unscoredReason(ep)})`));
+        })))) : h('p', { class: 'mm-muted' }, 'No episodes yet.'),
+      h('div', { class: 'mm-actions' },
+        h('button', { type: 'button', class: 'mm-btn', on: { click: exportData } }, 'Export data (JSON)'),
+        h('button', { type: 'button', class: 'mm-btn', on: { click: () => { if (confirm('Erase all MMTI observations and feedback in this browser?')) { O.reset(); renderModal(); } } } }, 'Reset observations')));
+  }
+
+  function exportData() {
+    const blob = new Blob([JSON.stringify({ ...O.exportData(), colony: S() }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: 'mmti-data.json' });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function proposeModal() {
+    const kinds = [
+      ['mmti-event.yml', 'Event or mechanic', 'Something that happens in the colony: what the player can do, and why it would be fun. Fun-only ideas are welcome; they may stay unscored.'],
+      ['mmti-rule.yml', 'Interpretation rule', 'What a behavior means, or a missing condition that explains inconsistent responses.'],
+      ['mmti-scene.yml', 'Result scene', 'An everyday situation and the conditional pattern it expresses.'],
+    ];
+    return modalFrame('Propose',
+      h('p', null, 'MMTI grows through proposals, collected as GitHub Issues. Accepted ones are built into the next version.'),
+      h('div', { class: 'mm-propose' }, kinds.map(([tpl, title, desc]) => h('a', { class: 'mm-propose-card', href: `${ISSUES_URL}?template=${tpl}`, target: '_blank', rel: 'noopener' },
+        h('strong', null, title), h('span', null, desc), h('em', null, 'Open a proposal ↗')))));
+  }
+
+  function openMenu() { openModal('menu'); }
+
+  // ---------- keyboard ----------
+  window.addEventListener('keydown', (e) => {
+    if (window.PlayActiveView !== 'mmti') return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
+    if (e.key === 'Escape') { if (ui.modal) closeModal(); else if (ui.tool) setTool(null); else select(null); return; }
+    if (ui.modal) return;
+    if (e.code === 'Space') { e.preventDefault(); setSpeed(-1); }
+    else if (e.key === '1' || e.key === '2' || e.key === '3') setSpeed(Number(e.key) - 1);
+  });
+
+  // ---------- loop ----------
+  let last = performance.now(), sinceSave = 0, sinceUI = 0;
+  function frame(now) {
+    const dt = Math.min(100, now - last);
+    last = now;
+    const active = window.PlayActiveView === 'mmti' && !document.hidden;
+    if (active) {
+      if (!ui.paused && !ui.modal) M.advance((dt / HOUR_MS) * SPEEDS[ui.speed]);
+      draw(now);
+      sinceUI += dt;
+      if (sinceUI > 200) { sinceUI = 0; updateUI(); }
+      sinceSave += dt;
+      if (sinceSave > 15000) { sinceSave = 0; M.save(); }
+    }
+    requestAnimationFrame(frame);
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden) M.save(); });
+  window.addEventListener('pagehide', () => M.save());
+
+  renderSpeed();
+  updateUI();
+  draw(performance.now());
+  requestAnimationFrame(frame);
+  if (!hadSave) {
+    const welcome = S().letters.find((l) => l.title === 'Welcome to the colony');
+    if (welcome) openLetter(welcome.id);
+  }
+
+  M.debug = {
+    render: () => { updateUI(); draw(performance.now()); },
+    ui, setView, select, openModal, closeModal, openLetter, setTool,
+  };
+})();
