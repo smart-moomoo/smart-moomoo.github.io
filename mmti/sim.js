@@ -28,6 +28,7 @@ window.MMTI = window.MMTI || {};
     potato: { label: 'Potatoes', stack: 50, spoil: 480, food: 0.3, raw: true },
     meal: { label: 'Meals', stack: 20, spoil: 96, food: 0.9 },
     medicine: { label: 'Medicine', stack: 25 },
+    preserved: { label: 'Preserved food', stack: 50, spoil: 720, food: 0.3 },
   };
 
   const DEFS = {
@@ -42,10 +43,28 @@ window.MMTI = window.MMTI || {};
     bush: { label: 'Berry bush', natural: true },
     keeper: { label: 'The Archivist' },
     grave: { label: 'Grave' },
+    bench: { label: 'Research bench', cost: 25, work: 2 },
+    smoker: { label: 'Smokehouse', cost: 25, work: 2, fuelCap: 10, burnH: 5, research: 'smoking' },
+    windmill: { label: 'Windmill', cost: 40, work: 3, power: 60, research: 'windmill' },
+    cooler: { label: 'Cooler', cost: 30, work: 2, power: -40, research: 'refrigeration' },
+    eheater: { label: 'Electric heater', cost: 30, work: 2, power: -50, heat: 45, research: 'electricheat' },
+    barricade: { label: 'Barricade', cost: 8, work: 0.5, blocks: true, research: 'palisade' },
+    trap: { label: 'Spike trap', cost: 15, work: 1, research: 'palisade' },
+  };
+  const RESEARCH = {
+    smoking: { label: 'Smoking', hours: 10, requires: [], branch: 'Preservation', desc: 'Build a smokehouse that turns raw food into preserved food, which keeps for a month. It burns wood.' },
+    refrigeration: { label: 'Refrigeration', hours: 20, requires: ['smoking', 'windmill'], branch: 'Preservation', desc: 'Build coolers that freeze a room so food in it stops spoiling. They need steady power.' },
+    windmill: { label: 'Wind power', hours: 12, requires: [], branch: 'Power', desc: 'Build windmills. Power rises and falls with the wind.' },
+    electricheat: { label: 'Electric heating', hours: 16, requires: ['windmill'], branch: 'Power', desc: 'Build electric heaters that burn no wood, but go cold when the wind drops.' },
+    palisade: { label: 'Fortification', hours: 10, requires: [], branch: 'Defense', desc: 'Build barricades that give cover, and spike traps that wound raiders who step on them.' },
+    bows: { label: 'Recurve bows', hours: 16, requires: ['palisade'], branch: 'Defense', desc: 'Colonists shoot straighter and hit harder, which makes fighting and rescues less costly.' },
+    herbalism: { label: 'Herbalism', hours: 12, requires: [], branch: 'Medicine', desc: 'Plant healroot in fields. Each ripe plant gives one medicine, but grows slowly.' },
   };
   const FLAMMABLE = new Set(['door', 'bed', 'table', 'tree', 'bush', 'grave']);
-  const BUILDABLE = ['wall', 'door', 'bed', 'table', 'campfire', 'stove'];
-  const WORK_TYPES = ['doctor', 'build', 'repair', 'cook', 'grow', 'chop', 'haul'];
+  const BUILDABLE = ['wall', 'door', 'bed', 'table', 'campfire', 'stove', 'bench', 'smoker', 'windmill', 'cooler', 'eheater', 'barricade', 'trap'];
+  const researched = (s, key) => !!(s.research && s.research.done.includes(key));
+  const canPlace = (s, kind) => BUILDABLE.includes(kind) && (!DEFS[kind].research || researched(s, DEFS[kind].research));
+  const WORK_TYPES = ['doctor', 'build', 'repair', 'cook', 'grow', 'chop', 'haul', 'research'];
 
   const HEATER_CAUSES = {
     flue: { finding: 'The flue is clogged with soot. Cleaning it will fix the heater: about 1 hour of work.', work: 1, wood: 0, p: 0.6 },
@@ -154,7 +173,7 @@ window.MMTI = window.MMTI || {};
       x, y, path: [], job: null, duty: null, carry: null,
       food: 0.8, rest: 0.9, cold: 0, weak: 0,
       skills: { build: 1, repair: 1, plants: 1, cook: 1, doctor: 1, ...(p.skills || {}) },
-      prio: { doctor: 3, build: 3, repair: 3, cook: 3, grow: 3, chop: 3, haul: 3, ...(p.prio || {}) },
+      prio: { doctor: 3, build: 3, repair: 3, cook: 3, grow: 3, chop: 3, haul: 3, research: 3, ...(p.prio || {}) },
       away: false, bed: null, sleeping: false, facing: 1, injuries: [], blood: 1, downed: false, drafted: false,
     };
   }
@@ -170,6 +189,7 @@ window.MMTI = window.MMTI || {};
       incident: null, caravan: null, letters: [],
       story: { nextAt: START_T + 7, counts: {}, travelers: 0, nextThreatAt: START_T + 5 * 24 },
       raiders: [], raid: null, fires: {}, shots: [], terrainVersion: 0, dead: [],
+      research: { done: [], active: null, progress: {} }, wind: 0.6, windAt: START_T,
       roomTemps: [], lastDay: dayIndex(START_T), warn: {}, relations: [], chatter: [], nextChat: START_T + 0.5,
     };
     const set = (x, y, t) => { if (inb(x, y)) s.terrain[idx(x, y)] = t; };
@@ -430,12 +450,12 @@ window.MMTI = window.MMTI || {};
     const r = roomAt(x, y);
     return r && !r.outdoors ? r.temp : outdoorTemp(s);
   }
-  const heating = (th) => !!DEFS[th.type].heat && !th.bp && !th.broken && th.lit;
+  const heating = (th) => !!DEFS[th.type].heat && !th.bp && !th.broken && (DEFS[th.type].power ? th.powered : th.lit);
   function heatSourcesIn(s, roomId, countUnlit) {
     let n = 0;
     for (const th of s.things) {
       if (!DEFS[th.type].heat || th.bp || th.broken) continue;
-      if (!countUnlit && !(th.fuel > 0)) continue;
+      if (!countUnlit && !(DEFS[th.type].power ? th.powered : th.fuel > 0)) continue;
       if (roomOf[idx(th.x, th.y)] === roomId) n++;
     }
     return n;
@@ -453,6 +473,12 @@ window.MMTI = window.MMTI || {};
   function updateTemps(s, dt) {
     const out = outdoorTemp(s);
     const heat = new Map();
+    const cool = new Map();
+    for (const th of s.things) {
+      if (th.type !== 'cooler' || th.bp || !th.powered) continue;
+      const r = roomOf[idx(th.x, th.y)];
+      if (r >= 0 && !rooms[r].outdoors) cool.set(r, (cool.get(r) || 0) + 40);
+    }
     for (const th of s.things) {
       if (!heating(th)) continue;
       const r = roomOf[idx(th.x, th.y)];
@@ -463,8 +489,34 @@ window.MMTI = window.MMTI || {};
       if (r.outdoors) continue;
       const h = heat.get(r.id) || 0;
       const sf = Math.max(1, r.tiles.length / 30);
-      const target = h > 0 ? Math.max(out, Math.min(21, out + h / sf)) : out;
+      let target = h > 0 ? Math.max(out, Math.min(21, out + h / sf)) : out;
+      const cl = cool.get(r.id) || 0;
+      if (cl) target = Math.max(-8, Math.min(target, out - cl / sf));
       r.temp += (target - r.temp) * k;
+    }
+  }
+
+  function powerStep(s) {
+    if (s.t >= (s.windAt || 0)) {
+      s.windAt = s.t + 2;
+      s.wind = Math.max(0.05, Math.min(1, (s.wind == null ? 0.6 : s.wind) * 0.5 + Math.random() * 0.6));
+    }
+    let supply = 0;
+    for (const th of s.things) if (th.type === 'windmill' && !th.bp) supply += DEFS.windmill.power * s.wind;
+    s.power = { supply: Math.round(supply), demand: 0 };
+    const users = s.things.filter((th) => DEFS[th.type].power < 0 && !th.bp).sort((a, b) => a.id - b.id);
+    for (const th of users) {
+      const need = -DEFS[th.type].power;
+      s.power.demand += need;
+      const was = th.powered;
+      th.powered = supply >= need;
+      if (th.powered) supply -= need;
+      if (was && !th.powered && !th.offWarned && s.t >= (s.warn.powerAt || 0)) {
+        th.offWarned = true;
+        s.warn.powerAt = s.t + 12;
+        letter(s, { kind: 'threat', title: `${DEFS[th.type].label} lost power`, body: `The wind dropped and there is not enough power for the ${DEFS[th.type].label.toLowerCase()}. More windmills would help.`, focus: { thingId: th.id } });
+      }
+      if (th.powered) th.offWarned = false;
     }
   }
 
@@ -473,7 +525,7 @@ window.MMTI = window.MMTI || {};
     for (const th of s.things) {
       const d = DEFS[th.type];
       if (!d.fuelCap || th.bp) continue;
-      const wants = !th.broken && (d.always || out < 18);
+      const wants = !th.broken && (th.type === 'smoker' ? !!th.busy : d.always || out < 18);
       th.lit = wants && th.fuel > 0;
       if (th.lit) th.fuel = Math.max(0, th.fuel - dt / d.burnH);
       if (wants && th.fuel <= 0 && !th.outWarned) {
@@ -521,7 +573,7 @@ window.MMTI = window.MMTI || {};
     return got;
   }
   function counts(s) {
-    const c = { wood: 0, berries: 0, potato: 0, meal: 0, medicine: 0 };
+    const c = { wood: 0, berries: 0, potato: 0, meal: 0, medicine: 0, preserved: 0 };
     for (const it of s.items) c[it.kind] += it.n;
     for (const col of s.colonists) if (col.carry && !col.away) c[col.carry.kind] += col.carry.n;
     return c;
@@ -719,8 +771,22 @@ window.MMTI = window.MMTI || {};
         if (j) byId.get(j.targetId).resD = c.id;
         return j;
       }
+      case 'research': {
+        const act = s.research.active;
+        if (!act) return null;
+        const benches = s.things.filter((th) => th.type === 'bench' && !th.bp && !th.res);
+        const j = goJob(s, c, 'study', benches);
+        if (j) j._tg.res = c.id;
+        return j;
+      }
       case 'cook': {
-        if (cnt.meal >= mealTarget(s)) return null;
+        if (cnt.meal >= mealTarget(s)) {
+          if (cnt.preserved >= 20 * s.colonists.length) return null;
+          const smokers = s.things.filter((th) => th.type === 'smoker' && !th.bp && !th.res && th.fuel > 0);
+          const js = fetchJob(s, c, 'smoke', smokers, (it) => ITEMS[it.kind].raw && it.n >= 3, () => 3);
+          if (js) byId.get(js.targetId).res = c.id;
+          return js;
+        }
         const stations = s.things.filter((th) => DEFS[th.type].cook && !th.bp && !th.res && th.fuel > 0);
         const j = fetchJob(s, c, 'cook', stations, (it) => ITEMS[it.kind].raw && it.n >= 2, () => 2);
         if (j) byId.get(j.targetId).res = c.id;
@@ -1010,6 +1076,32 @@ window.MMTI = window.MMTI || {};
         }
         return;
       }
+      case 'study': {
+        const key = s.research.active;
+        if (!th || !key) return endJob(s, c);
+        s.research.progress[key] = (s.research.progress[key] || 0) + dt * wf * (has(c, 'lazy') ? 0.9 : 1);
+        if (s.research.progress[key] >= RESEARCH[key].hours) {
+          s.research.done.push(key);
+          s.research.active = null;
+          letter(s, { kind: 'good', title: `Research complete: ${RESEARCH[key].label}`, body: `${RESEARCH[key].desc}\n\nChoose the next project in Research.` });
+          return endJob(s, c);
+        }
+        j.work += dt;
+        if (j.work >= 2) endJob(s, c);
+        return;
+      }
+      case 'smoke':
+        if (!th || !(th.fuel > 0) || !c.carry) { if (th) th.busy = false; return endJob(s, c); }
+        th.busy = true;
+        j.work += dt * c.skills.cook * wf;
+        if (j.work >= 1) {
+          const n = c.carry.n;
+          c.carry = null;
+          th.busy = false;
+          dropItem(s, 'preserved', n, Math.round(c.x), Math.round(c.y));
+          endJob(s, c);
+        }
+        return;
       case 'cook':
         if (!th || !(th.fuel > 0) || !c.carry) return endJob(s, c);
         j.work += dt * c.skills.cook * wf;
@@ -1031,9 +1123,11 @@ window.MMTI = window.MMTI || {};
         if (!p || !p.sown || p.growth < 1) return endJob(s, c);
         j.work += dt * plantSkill(c) * wf;
         if (j.work >= 0.4) {
+          const crop = p.crop;
           p.sown = false;
           p.growth = 0;
-          dropItem(s, 'potato', CROP_YIELD, j.tile % W, (j.tile / W) | 0);
+          p.crop = crop;
+          dropItem(s, p.crop === 'healroot' ? 'medicine' : 'potato', p.crop === 'healroot' ? 1 : CROP_YIELD, j.tile % W, (j.tile / W) | 0);
           endJob(s, c);
         }
         return;
@@ -1177,7 +1271,7 @@ window.MMTI = window.MMTI || {};
     for (const p of Object.values(s.zones.grow)) {
       if (!p.sown || p.growth >= 1) continue;
       if (out < -6) { p.sown = false; p.growth = 0; frost++; }
-      else if (out >= 6 && hour >= 6 && hour < 20) p.growth = Math.min(1, p.growth + dt / CROP_HOURS);
+      else if (out >= 6 && hour >= 6 && hour < 20) p.growth = Math.min(1, p.growth + dt / (p.crop === 'healroot' ? CROP_HOURS * 1.5 : CROP_HOURS));
     }
     if (frost) s.warn.frost = (s.warn.frost || 0) + frost;
     for (const th of s.things) {
@@ -1341,7 +1435,7 @@ window.MMTI = window.MMTI || {};
       if (!best) return;
       a.cd = 0.1;
       const skill = a.hp != null ? 1 : 0.5 + 0.5 * health(a);
-      const base = a.hp != null ? 0.5 : 0.66;
+      const base = a.hp != null ? 0.5 : researched(s, 'bows') ? 0.76 : 0.66;
       const chance = Math.max(0.1, Math.min(0.85, (base - 0.035 * bd - (inCover(best.x, best.y) ? 0.3 : 0)) * skill));
       const hit = Math.random() < chance;
       s.shots.push({ x0: a.x, y0: a.y, x1: best.x, y1: best.y, hit, until: s.t + 0.04, side: a.hp != null ? 'raid' : 'col' });
@@ -1349,7 +1443,7 @@ window.MMTI = window.MMTI || {};
     };
     for (const c of s.colonists) {
       if (c.away || c.downed || !c.drafted) continue;
-      shoot(c, s.raiders, (r) => { r.hp -= rand(0.25, 0.4); }, 7);
+      shoot(c, s.raiders, (r) => { r.hp -= rand(0.25, 0.4) + (researched(s, 'bows') ? 0.1 : 0); }, 7);
     }
     const exposed = s.colonists.filter((c) => !c.away && !c.downed);
     for (const r of s.raiders) {
@@ -1380,6 +1474,14 @@ window.MMTI = window.MMTI || {};
     }
     if (r.state !== 'flee' && (r.hp < 0.5 || s.t >= s.raid.leaveAt)) { r.state = 'flee'; r.path = null; }
     const [x, y] = [Math.round(r.x), Math.round(r.y)];
+    const trap = structAt[idx(x, y)];
+    if (trap && trap.type === 'trap' && !trap.bp) {
+      r.hp -= 0.5;
+      s.things.splice(s.things.indexOf(trap), 1);
+      reindex(s);
+      raidGrid(s);
+      s.shots.push({ x0: x, y0: y - 0.5, x1: x, y1: y, hit: true, until: s.t + 0.05, side: 'trap' });
+    }
     if (r.state === 'flee') {
       if (x === 0 || y === 0 || x === W - 1 || y === H - 1) {
         if (r.carry) s.raid.stolen[r.carry.kind] = (s.raid.stolen[r.carry.kind] || 0) + r.carry.n;
@@ -1861,6 +1963,7 @@ window.MMTI = window.MMTI || {};
       case 'build': {
         const d = DEFS[cmd.kind];
         if (!BUILDABLE.includes(cmd.kind)) return fail('Unknown building');
+        if (!canPlace(s, cmd.kind)) return fail('Research this first');
         const { x, y } = cmd;
         if (!inb(x, y)) return fail('Outside the map');
         const i = idx(x, y);
@@ -1915,9 +2018,10 @@ window.MMTI = window.MMTI || {};
             s.zones.stock.push(i);
             n++;
           } else if (cmd.mode === 'grow') {
+            if (s.zones.grow[i] && !s.zones.grow[i].sown && cmd.crop) { s.zones.grow[i].crop = cmd.crop === 'healroot' && researched(s, 'herbalism') ? 'healroot' : 'potato'; n++; continue; }
             if (s.zones.grow[i] || th || (s.terrain[i] !== T.GRASS && s.terrain[i] !== T.DIRT)) continue;
             if (stockSet.has(i)) s.zones.stock.splice(s.zones.stock.indexOf(i), 1);
-            s.zones.grow[i] = { sown: false, growth: 0 };
+            s.zones.grow[i] = { sown: false, growth: 0, crop: cmd.crop === 'healroot' && researched(s, 'herbalism') ? 'healroot' : 'potato' };
             n++;
           }
         }
@@ -1963,6 +2067,22 @@ window.MMTI = window.MMTI || {};
         const tg = cmd.target || {};
         if (inc && inc.kind === 'heating' && tg.kind === 'thing' && tg.id === inc.heaterId) consult(s, inc, 'heater');
         if (inc && inc.kind === 'caravan' && tg.kind === 'world' && tg.what === 'blockage') consult(s, inc, 'blockage');
+        return ok();
+      }
+      case 'research': {
+        const r = RESEARCH[cmd.key];
+        if (!r) return fail();
+        if (researched(s, cmd.key)) return fail('Already researched');
+        if (!r.requires.every((k) => researched(s, k))) return fail('Research what it builds on first');
+        if (M.observe && M.observe.logDecision) {
+          const cnt = counts(s);
+          M.observe.logDecision('research-choice', {
+            key: cmd.key, previous: s.research.active,
+            available: Object.keys(RESEARCH).filter((k) => !researched(s, k) && RESEARCH[k].requires.every((q) => researched(s, q))),
+            season: calendar(s.t).season, wood: cnt.wood, food: rawFood(cnt) + cnt.meal + cnt.preserved, medicine: cnt.medicine, colonists: s.colonists.length,
+          }, s);
+        }
+        s.research.active = cmd.key;
         return ok();
       }
       case 'draft': {
@@ -2061,6 +2181,7 @@ window.MMTI = window.MMTI || {};
   function step(s, dt) {
     s.t += dt;
     if (s.weather.until != null && s.t >= s.weather.until) s.weather = { override: null, label: null, until: null };
+    powerStep(s);
     burnFuel(s, dt);
     updateTemps(s, dt);
     for (const c of s.colonists.slice()) if (!c.away) stepColonist(s, c, dt);
@@ -2101,6 +2222,9 @@ window.MMTI = window.MMTI || {};
     if (!s.raiders) s.raiders = [];
     if (!s.fires) s.fires = {};
     if (!s.dead) s.dead = [];
+    if (!s.research) s.research = { done: [], active: null, progress: {} };
+    if (s.wind == null) { s.wind = 0.6; s.windAt = s.t; }
+    for (const c of s.colonists) if (c.prio.research == null) c.prio.research = 3;
     s.shots = [];
     if (s.story.nextThreatAt == null) s.story.nextThreatAt = s.t + 3 * 24;
     for (const c of s.colonists) {
@@ -2125,7 +2249,7 @@ window.MMTI = window.MMTI || {};
 
   // ---------- public API ----------
   Object.assign(M, {
-    W, H, T, DEFS, ITEMS, TRAITS, REL_LABEL, BUILDABLE, WORK_TYPES, WORLD, ROUTES, HEATER_CAUSES, BLOCK_CAUSES, CLEAR_HOURS, RETURN_HOURS, CROP_HOURS,
+    W, H, T, DEFS, ITEMS, TRAITS, REL_LABEL, RESEARCH, BUILDABLE, WORK_TYPES, WORLD, ROUTES, HEATER_CAUSES, BLOCK_CAUSES, CLEAR_HOURS, RETURN_HOURS, CROP_HOURS,
     advance(hours) {
       let left = hours;
       while (left > 1e-9) { const dt = Math.min(STEP, left); step(S, dt); left -= dt; }
@@ -2158,11 +2282,13 @@ window.MMTI = window.MMTI || {};
       byId: (id) => byId.get(id),
       counts: () => counts(S),
       health, isNight: () => isNight(S),
-      canBuild: (kind, x, y) => inb(x, y) && BUILDABLE.includes(kind) && S.terrain[idx(x, y)] !== T.WATER && !structAt[idx(x, y)] && !S.zones.grow[idx(x, y)],
+      canBuild: (kind, x, y) => inb(x, y) && canPlace(S, kind) && S.terrain[idx(x, y)] !== T.WATER && !structAt[idx(x, y)] && !S.zones.grow[idx(x, y)],
       caravanCandidates: () => caravanCandidates(S),
       eligibleForCaravan: () => home(S).filter((c) => health(c) > 0.5),
       thoughts: (c) => thoughts(S, c),
       raiders: () => S.raiders,
+      researched: (k) => researched(S, k),
+      canPlace: (k) => canPlace(S, k),
       fires: () => S.fires,
       relationsOf: (c) => relationsOf(S, c),
       spoilFactor: (x, y) => { const t = tempAt(S, x, y), r = roomAt(x, y); return t < 0 ? 0 : r && !r.outdoors ? (t < 10 ? 0.4 : 1) : 1.5; },

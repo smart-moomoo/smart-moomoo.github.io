@@ -14,8 +14,8 @@
   const SPEEDS = [1, 3, 6];
   const INK = '#171512';
   const ISSUES_URL = 'https://github.com/smart-moomoo/smart-moomoo.github.io/issues/new';
-  const WORK_LABEL = { doctor: 'Doctor', build: 'Construct', repair: 'Repair', cook: 'Cook', grow: 'Grow', chop: 'Chop', haul: 'Haul' };
-  const ZONE_TOOLS = { stock: 'stock', grow: 'grow', clearzone: 'clear' };
+  const WORK_LABEL = { research: 'Research', doctor: 'Doctor', build: 'Construct', repair: 'Repair', cook: 'Cook', grow: 'Grow', chop: 'Chop', haul: 'Haul' };
+  const ZONE_TOOLS = { stock: 'stock', grow: 'grow', healroot: 'grow', clearzone: 'clear' };
 
   let hadSave = false;
   try { hadSave = !!localStorage.getItem('mmti-colony-v3'); } catch {}
@@ -142,6 +142,41 @@
       R(g, 1, 8, 14, 6, INK); R(g, 2, 9, 12, 3, '#f4efe4'); R(g, 3, 12, 10, 1, '#d8d0bf');
       R(g, 4, 6, 8, 4, INK); R(g, 5, 6, 6, 3, '#e0a040'); R(g, 6, 6, 2, 1, '#6fae47'); R(g, 9, 7, 1, 1, '#c0533a');
     }),
+    bench: () => sprite('bench', 16, 16, (g) => {
+      R(g, 1, 4, 14, 8, INK); R(g, 2, 5, 12, 5, '#8a5f37'); R(g, 2, 5, 12, 1, '#a8753f'); R(g, 2, 12, 2, 3, INK); R(g, 12, 12, 2, 3, INK);
+      R(g, 4, 2, 4, 4, INK); R(g, 5, 3, 2, 2, '#f4efe4'); R(g, 9, 3, 4, 3, '#3d6f9e'); R(g, 9, 3, 4, 1, '#6a9bd0');
+    }),
+    smoker: (lit) => sprite(`smoker${lit}`, 16, 16, (g) => {
+      R(g, 2, 3, 12, 12, INK); R(g, 3, 4, 10, 10, '#7a5230'); R(g, 3, 4, 10, 2, '#9a6a3c'); R(g, 5, 8, 6, 4, INK); R(g, 6, 9, 4, 2, lit ? '#ff7a2e' : '#3a3a3a');
+      R(g, 7, 0, 2, 4, INK);
+    }),
+    windmill: (f) => sprite(`windmill${f}`, 16, 16, (g) => {
+      R(g, 6, 7, 4, 9, INK); R(g, 7, 8, 2, 8, '#c9c2b0');
+      const blades = f % 2 ? [[1, 6, 14, 2], [7, 0, 2, 14]] : [[2, 2, 3, 3], [11, 2, 3, 3], [2, 10, 3, 3], [11, 10, 3, 3]];
+      for (const [x, y, w, hh] of blades) R(g, x, y, w, hh, '#f4efe4');
+      R(g, 7, 6, 2, 2, '#c0533a');
+    }),
+    cooler: (on) => sprite(`cooler${on}`, 16, 16, (g) => {
+      R(g, 2, 3, 12, 11, INK); R(g, 3, 4, 10, 9, '#8fb8d8'); for (const y of [6, 8, 10]) R(g, 4, y, 8, 1, on ? '#dff2ff' : '#5a7890');
+    }),
+    eheater: (on) => sprite(`eheater${on}`, 16, 16, (g) => {
+      R(g, 2, 3, 12, 11, INK); R(g, 3, 4, 10, 9, '#6f6b64'); for (const y of [6, 8, 10]) R(g, 4, y, 8, 1, on ? '#ff9a3d' : '#3a3a3a'); R(g, 11, 1, 2, 3, '#ffd23d');
+    }),
+    barricade: () => sprite('barricade', 16, 16, (g) => {
+      R(g, 0, 6, 16, 9, INK); R(g, 1, 7, 14, 3, '#b5a37a'); R(g, 1, 11, 14, 3, '#a8966d'); R(g, 5, 7, 1, 7, INK); R(g, 10, 7, 1, 7, INK);
+    }),
+    trap: () => sprite('trap', 16, 16, (g) => {
+      for (const x of [3, 7, 11]) { R(g, x, 9, 2, 4, '#8d8a84'); R(g, x, 8, 2, 1, '#c9c2b0'); } R(g, 2, 13, 12, 1, '#5a3c20');
+    }),
+    preserved: () => sprite('preserved', 16, 16, (g) => {
+      R(g, 3, 3, 10, 12, INK); R(g, 4, 4, 8, 10, '#c9a466'); R(g, 4, 7, 8, 2, '#8a5a2b'); R(g, 5, 2, 6, 2, INK);
+    }),
+    healroot: (stage) => sprite(`heal${stage}`, 16, 16, (g) => {
+      if (stage === 0) { R(g, 7, 9, 2, 3, '#8fe0b0'); return; }
+      R(g, 7, 5, 2, 8, '#2f7a5f'); R(g, 4, 6, 3, 2, '#8fe0b0'); R(g, 9, 5, 3, 2, '#8fe0b0');
+      if (stage >= 2) { R(g, 5, 9, 2, 2, '#8fe0b0'); R(g, 9, 9, 2, 2, '#8fe0b0'); }
+      if (stage === 3) { R(g, 6, 2, 4, 3, '#f4efe4'); R(g, 7, 3, 2, 1, '#d8323c'); }
+    }),
     medicine: () => sprite('medicine', 16, 16, (g) => {
       R(g, 3, 5, 10, 9, INK); R(g, 4, 6, 8, 7, '#f4efe4'); R(g, 7, 7, 2, 5, '#d8323c'); R(g, 5, 8, 6, 2, '#d8323c');
     }),
@@ -213,6 +248,15 @@
       case 'logs': return SPR.logs();
       case 'crate': return SPR.crate();
       case 'medicine': return SPR.medicine();
+      case 'preserved': return SPR.preserved();
+      case 'bench': return SPR.bench();
+      case 'smoker': return SPR.smoker(1);
+      case 'windmill': return SPR.windmill(0);
+      case 'cooler': return SPR.cooler(1);
+      case 'eheater': return SPR.eheater(1);
+      case 'barricade': return SPR.barricade();
+      case 'trap': return SPR.trap();
+      case 'healroot': return sprite('healicon', 16, 16, (g) => { g.drawImage(SPR.soil(), 0, 0); g.drawImage(SPR.healroot(2), 0, 0); });
       case 'potato': return SPR.potato();
       case 'meal': return SPR.meal();
       case 'berries': return SPR.berries();
@@ -287,7 +331,7 @@
   const el = {
     clock: h('span', { class: 'mm-clock' }),
     weather: h('span', { class: 'mm-weather' }),
-    wood: h('b'), food: h('b'), meal: h('b'), med: h('b'),
+    wood: h('b'), food: h('b'), meal: h('b'), med: h('b'), pres: h('b'), power: h('span', { class: 'mm-chip mm-power' }),
     speed: [],
     bar: h('div', { class: 'mm-colonists', 'aria-label': 'Colonists' }),
     letters: h('div', { class: 'mm-letters', 'aria-label': 'Letters' }),
@@ -310,7 +354,9 @@
     h('span', { class: 'mm-chip', title: 'Wood' }, iconCanvas('logs', 1.25), el.wood),
     h('span', { class: 'mm-chip', title: 'Raw food: potatoes and berries' }, iconCanvas('potato', 1.25), el.food),
     h('span', { class: 'mm-chip', title: 'Cooked meals' }, iconCanvas('meal', 1.25), el.meal),
+    h('span', { class: 'mm-chip', title: 'Preserved food' }, iconCanvas('preserved', 1.25), el.pres),
     h('span', { class: 'mm-chip', title: 'Medicine' }, iconCanvas('medicine', 1.25), el.med),
+    el.power,
     speedGroup,
     h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: openMenu } }, 'Menu'));
   const stage = h('div', { class: 'mm-stage' }, canvas, el.letters, el.hover, el.toast);
@@ -323,19 +369,30 @@
   }
   el.viewBtn = h('button', { type: 'button', class: 'mm-btn', on: { click: () => setView(ui.view === 'map' ? 'world' : 'map') } }, 'World map');
   const tools = h('div', { class: 'mm-tools' },
-    h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Architect'),
-      M.BUILDABLE.map((k) => toolButton(k, M.DEFS[k].label, `${M.DEFS[k].cost} wood`))),
-    h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Zones'),
-      toolButton('stock', 'Stockpile'), toolButton('grow', 'Field'), toolButton('clearzone', 'Remove zone')),
+    el.archRow = h('div', { class: 'mm-toolrow' }),
+    el.zoneRow = h('div', { class: 'mm-toolrow' }),
     h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Orders'),
       toolButton('chop', 'Chop'), toolButton('harvest', 'Pick berries'), toolButton('cancel', 'Cancel')),
     h('div', { class: 'mm-toolrow mm-toolrow-views' },
       el.viewBtn,
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('work') } }, 'Work'),
+      el.researchBtn = h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('research') } }, 'Research'),
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('reflect') } }, 'Archivist'),
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('evidence') } }, 'Evidence'),
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('propose') } }, 'Propose')),
     el.tip);
+  let toolSig = '';
+  function renderToolRows() {
+    const sig = S().research.done.join();
+    if (sig === toolSig) return;
+    toolSig = sig;
+    el.archRow.replaceChildren(h('span', { class: 'mm-toolhead' }, 'Architect'),
+      ...M.BUILDABLE.filter((k) => q.canPlace(k)).map((k) => toolButton(k, M.DEFS[k].label, `${M.DEFS[k].cost} wood`)));
+    el.zoneRow.replaceChildren(...[h('span', { class: 'mm-toolhead' }, 'Zones'),
+      toolButton('stock', 'Stockpile'), toolButton('grow', 'Field'), q.researched('herbalism') ? toolButton('healroot', 'Healroot field') : null, toolButton('clearzone', 'Remove zone')].filter(Boolean));
+    setTool(ui.tool);
+  }
+  renderToolRows();
   root.replaceChildren(h('div', { class: 'mm' }, top, el.bar, stage, h('div', { class: 'mm-bottom' }, el.inspect, tools), el.modal));
 
   // ---------- state changes ----------
@@ -360,6 +417,7 @@
       stock: 'Drag to mark a stockpile. Colonists haul goods there; indoors they keep longer.',
       grow: 'Drag over open ground to mark a field. Colonists plant potatoes there when it is warm.',
       clearzone: 'Drag to remove stockpiles and fields.',
+      healroot: 'Drag over open ground or an unplanted field to grow healroot, which gives medicine.',
     };
     if (t && t.kind === 'move') { el.tip.textContent = 'Click where they should go. Right-click also moves a drafted colonist.'; return; }
     el.tip.textContent = t ? `${tips[t.kind] || `Click to place a ${M.DEFS[t.kind].label.toLowerCase()}.`} Right-click or Esc to stop.` : '';
@@ -435,7 +493,7 @@
     if (!d || !ui.tool) return;
     const k = ui.tool.kind;
     if (ZONE_TOOLS[k]) {
-      const res = M.command({ type: 'zone', mode: ZONE_TOOLS[k], x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1 });
+      const res = M.command({ type: 'zone', mode: ZONE_TOOLS[k], crop: k === 'healroot' ? 'healroot' : k === 'grow' ? 'potato' : undefined, x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1 });
       if (!res.ok) toast(res.reason);
     } else if (k === 'chop' || k === 'harvest' || k === 'cancel') {
       const res = M.command({ type: 'designate', mode: k, x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1 });
@@ -634,7 +692,7 @@
   function bar(g, x, y, f, col) { R(g, x, y, 14, 3, INK); R(g, x + 1, y + 1, Math.round(12 * Math.max(0, Math.min(1, f))), 1, col); }
 
   function itemSprite(kind) {
-    return kind === 'wood' ? SPR.logs() : kind === 'potato' ? SPR.potato() : kind === 'berries' ? SPR.berries() : kind === 'medicine' ? SPR.medicine() : SPR.meal();
+    return kind === 'wood' ? SPR.logs() : kind === 'potato' ? SPR.potato() : kind === 'berries' ? SPR.berries() : kind === 'medicine' ? SPR.medicine() : kind === 'preserved' ? SPR.preserved() : SPR.meal();
   }
 
   function thingSprite(th, now) {
@@ -648,6 +706,13 @@
       case 'bush': return SPR.bush(!!th.berries);
       case 'keeper': return SPR.keeper();
       case 'grave': return SPR.grave();
+      case 'bench': return SPR.bench();
+      case 'smoker': return SPR.smoker(th.lit ? 1 : 0);
+      case 'windmill': return SPR.windmill(th.bp ? 0 : Math.floor(performance.now() / Math.max(80, 400 - 320 * (S().wind || 0))) % 2);
+      case 'cooler': return SPR.cooler(th.powered ? 1 : 0);
+      case 'eheater': return SPR.eheater(th.powered ? 1 : 0);
+      case 'barricade': return SPR.barricade();
+      case 'trap': return SPR.trap();
       default: return null;
     }
   }
@@ -774,7 +839,9 @@
     for (const [k, p] of Object.entries(s.zones.grow)) {
       const i = Number(k), px = (i % W) * TS, py = ((i / W) | 0) * TS;
       g.drawImage(SPR.soil(), px, py);
-      if (p.sown) g.drawImage(SPR.crop(p.growth >= 1 ? 3 : p.growth > 0.6 ? 2 : p.growth > 0.25 ? 1 : 0), px, py);
+      const st = p.growth >= 1 ? 3 : p.growth > 0.6 ? 2 : p.growth > 0.25 ? 1 : 0;
+      if (p.sown) g.drawImage(p.crop === 'healroot' ? SPR.healroot(st) : SPR.crop(st), px, py);
+      else if (p.crop === 'healroot') R(g, px + 7, py + 7, 2, 2, '#8fe0b0');
     }
     for (const i of s.zones.stock) g.drawImage(SPR.stockTile(), (i % W) * TS, ((i / W) | 0) * TS);
     g.font = 'bold 6px sans-serif';
@@ -946,6 +1013,8 @@
       case 'harvest': return j.stage === 'walk' ? 'Going to pick berries' : 'Picking berries';
       case 'inspect': return j.stage === 'walk' ? 'Going to inspect the heater' : 'Inspecting the heater';
       case 'drafted': return j.stage === 'walk' ? 'Drafted, moving' : 'Drafted, holding position';
+      case 'study': return j.stage === 'walk' ? 'Going to the research bench' : `Researching ${S().research.active ? M.RESEARCH[S().research.active].label.toLowerCase() : ''}`;
+      case 'smoke': return fetching ? 'Fetching food to smoke' : j.stage === 'walk' ? 'Going to the smokehouse' : 'Smoking food';
       case 'flee': return 'Fleeing indoors';
       case 'hide': return 'Hiding from raiders';
       case 'firefight': return 'Fighting a fire';
@@ -998,6 +1067,13 @@
     el.food.textContent = cnt.potato + cnt.berries;
     el.meal.textContent = cnt.meal;
     el.med.textContent = cnt.medicine;
+    el.pres.textContent = cnt.preserved;
+    const pw = s.power;
+    el.power.hidden = !pw || (!pw.supply && !pw.demand);
+    if (pw) el.power.textContent = `⚡ ${pw.supply}/${pw.demand} · wind ${Math.round((s.wind || 0) * 100)}%`;
+    el.power.classList.toggle('is-short', !!pw && pw.demand > pw.supply);
+    renderToolRows();
+    el.researchBtn.textContent = s.research.active ? `Research: ${M.RESEARCH[s.research.active].label} ${Math.round(((s.research.progress[s.research.active] || 0) / M.RESEARCH[s.research.active].hours) * 100)}%` : 'Research';
   }
 
   function hoverText() {
@@ -1145,6 +1221,12 @@
       }
       if (th.type === 'tree') return { sig: `tr${th.id}${th.des}${Math.round((th.growth == null ? 1 : th.growth) * 20)}`, build: () => [h('h4', null, (th.growth == null ? 1 : th.growth) < 0.5 ? 'Sapling' : 'Tree'), h('p', null, `Gives about ${Math.max(1, Math.round(10 * (th.growth == null ? 1 : th.growth)))} wood when chopped.${(th.growth == null ? 1 : th.growth) < 0.5 ? ' Too young to chop yet.' : (th.growth == null ? 1 : th.growth) < 1 ? ' Still growing.' : ''}`), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'chop' ? 'Don’t chop' : 'Chop', () => order({ type: 'designate', mode: th.des === 'chop' ? 'cancel' : 'chop', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
       if (th.type === 'bush') return { sig: `bu${th.id}${th.des}${th.berries}`, build: () => [h('h4', null, 'Berry bush'), h('p', null, th.berries ? 'Ripe. Gives 4 berries, which spoil within about two days.' : `Regrowing${q.outdoorTemp() <= 5 ? ' when it warms up' : `, ripe in ${fmtH(th.regrowAt - s.t)}`}.`), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'harvest' ? 'Stop picking' : 'Pick berries', () => order({ type: 'designate', mode: th.des === 'harvest' ? 'cancel' : 'harvest', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
+      if (th.type === 'bench') return { sig: `be${th.id}${S().research.active}`, build: () => [h('h4', null, 'Research bench'), h('p', null, S().research.active ? `Working on ${M.RESEARCH[S().research.active].label}.` : 'No project chosen.'), h('div', { class: 'mm-gizmos' }, gizmo('Choose research', () => openModal('research')))] };
+      if (th.type === 'windmill') return { sig: `wm${th.id}${Math.round((S().wind || 0) * 20)}`, build: () => [h('h4', null, 'Windmill'), h('p', null, `Wind ${Math.round((S().wind || 0) * 100)}%: producing ${Math.round(60 * (S().wind || 0))} of up to 60 power.`)] };
+      if (th.type === 'cooler' || th.type === 'eheater') return { sig: `pw${th.id}${th.powered}${where}`, build: () => [h('h4', null, d.label), where ? h('p', { class: 'mm-muted' }, where) : null, h('p', { class: th.powered ? null : 'mm-warn' }, th.powered ? `Powered (${-d.power}).` : `No power: needs ${-d.power}.`), h('p', null, th.type === 'cooler' ? 'Freezes the room it stands in, so food there stops spoiling.' : 'Heats the room without burning wood while it has power.')] };
+      if (th.type === 'smoker') return { sig: `sm${th.id}${Math.round(th.fuel || 0)}${th.lit}`, build: () => [h('h4', null, 'Smokehouse'), fuelLine(th), h('p', null, 'Cooks smoke 3 raw food into 3 preserved food, which keeps for a month. Burns wood only while smoking.')] };
+      if (th.type === 'barricade') return { sig: `ba${th.id}`, build: () => [h('h4', null, 'Barricade'), h('p', null, 'Colonists next to it are much harder to hit.')] };
+      if (th.type === 'trap') return { sig: `tp${th.id}`, build: () => [h('h4', null, 'Spike trap'), h('p', null, 'Badly wounds the first raider who steps on it.')] };
       if (th.type === 'grave') return { sig: `g${th.id}`, build: () => [h('h4', null, 'Grave'), h('p', null, `${th.name || 'A colonist'} is buried here.`)] };
       if (th.type === 'keeper') return { sig: 'keeper', build: () => [h('h4', null, 'The Archivist'), h('p', null, 'She has been watching how the colony handles trouble.'), h('div', { class: 'mm-gizmos' }, gizmo('Talk to her', () => openModal('reflect')))] };
       return { sig: `o${th.id}${where}${Math.round(th.fuel || 0)}${th.lit}`, build: () => [h('h4', null, d.label), where ? h('p', { class: 'mm-muted' }, where) : null,
@@ -1287,6 +1369,7 @@
     else if (m.kind === 'propose') node = proposeModal();
     else if (m.kind === 'menu') node = menuModal();
     else if (m.kind === 'caravan') node = caravanModal(m.arg);
+    else if (m.kind === 'research') node = researchModal();
     el.modal.replaceChildren(node);
     el.modal.hidden = false;
   }
@@ -1314,6 +1397,26 @@
       h('div', { class: 'mm-actions' }, actions, jump,
         !l.actions ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.command({ type: 'dismiss-letter', id: l.id }); lastLetterSig = ''; closeModal(); } } }, 'Dismiss') : null));
   }
+  function researchModal() {
+    const s = S();
+    const hasBench = s.things.some((th) => th.type === 'bench' && !th.bp);
+    const branches = {};
+    for (const [k, r] of Object.entries(M.RESEARCH)) (branches[r.branch] = branches[r.branch] || []).push([k, r]);
+    return modalFrame('Research',
+      h('p', null, hasBench ? 'Colonists with Research work study at the bench. Time spent here is time not spent on food, wood, or repairs.' : 'Build a research bench (Architect) first. Colonists with Research work study there.'),
+      h('div', { class: 'mm-research' }, Object.entries(branches).map(([b, list]) => h('div', { class: 'mm-branch' }, h('p', { class: 'mm-kicker' }, b),
+        list.map(([k, r]) => {
+          const done = q.researched(k), active = s.research.active === k;
+          const ready = r.requires.every((x) => q.researched(x));
+          const prog = (s.research.progress[k] || 0) / r.hours;
+          return h('div', { class: `mm-proj${done ? ' is-done' : active ? ' is-active' : !ready ? ' is-locked' : ''}` },
+            h('strong', null, r.label), h('span', null, r.desc),
+            h('small', null, done ? 'Done' : !ready ? `Needs ${r.requires.filter((x) => !q.researched(x)).map((x) => M.RESEARCH[x].label).join(' and ')}` : `${Math.round(prog * 100)}% of ${r.hours} hours`),
+            !done && ready && !active ? h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: () => { order({ type: 'research', key: k }); renderModal(); } } }, prog > 0 ? 'Resume' : 'Research this') : null,
+            active ? h('em', null, 'In progress') : null);
+        })))));
+  }
+
   function caravanModal(arg) {
     const inc = S().incident;
     const picked = arg.picked;

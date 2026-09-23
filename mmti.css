@@ -238,3 +238,16 @@
 @media (prefers-reduced-motion: reduce) {
   .mm-letter.is-new { animation: none; }
 }
+
+.mm-power.is-short { color: #ff9a8a; }
+.mm-research { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.mm-branch { display: grid; gap: 8px; align-content: start; }
+.mm-branch .mm-kicker { color: var(--mm-gold); }
+.mm-proj { display: grid; gap: 4px; padding: 8px 10px; background: var(--mm-raise); border: 2px solid var(--mm-ink); font-size: 13px; }
+.mm-proj span { color: var(--mm-muted); font-size: 12px; }
+.mm-proj small { font-size: 11px; color: var(--mm-muted); }
+.mm-proj em { font-style: normal; color: var(--mm-gold); font-size: 12px; }
+.mm-proj.is-done { border-color: #2f7a5f; }
+.mm-proj.is-active { border-color: var(--mm-gold); }
+.mm-proj.is-locked { opacity: .6; }
+.mm-proj .mm-btn { justify-self: start; }
