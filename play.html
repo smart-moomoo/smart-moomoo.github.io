@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f8f7f3">
-  <meta name="description" content="Two small games on Hao Ren's website: a Jumping Bird arcade game and a relaxing Cozy Farm sim that share one coin wallet.">
+  <meta name="description" content="Small games on Hao Ren's website: Jumping Bird, Cozy Farm, and MMTI, a colony game that describes how you respond to setbacks.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Play · Hao Ren">
   <meta property="og:description" content="Jumping Bird and Cozy Farm — two small games sharing one coin wallet.">
@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="./game.css">
   <link rel="stylesheet" href="./farm.css">
   <link rel="stylesheet" href="./play.css">
+  <link rel="stylesheet" href="./mmti.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -37,6 +38,7 @@
         <div class="play-switcher" role="tablist" aria-label="Choose a game">
           <button type="button" class="play-tab" id="tab-game" role="tab" aria-selected="true" aria-controls="view-game">🐦 Jumping Bird</button>
           <button type="button" class="play-tab" id="tab-farm" role="tab" aria-selected="false" aria-controls="view-farm">🌾 Cozy Farm</button>
+          <button type="button" class="play-tab" id="tab-mmti" role="tab" aria-selected="false" aria-controls="view-mmti">🪞 MMTI</button>
         </div>
 
         <div class="play-view" id="view-game" role="tabpanel" aria-labelledby="tab-game">
@@ -82,6 +84,10 @@
             <div class="farm-tray-options" id="farm-tray-options"></div>
           </div>
         </div>
+
+        <div class="play-view" id="view-mmti" role="tabpanel" aria-labelledby="tab-mmti" hidden>
+          <div id="mmti-app" class="mmti-app"></div>
+        </div>
       </section>
     </main>
     <footer><span>© <span id="year">2026</span> Hao Ren</span><a href="https://www.linkedin.com/in/hao-ren-b7b216244/">LinkedIn ↗</a><a href="./index.html#about">Back to profile <span aria-hidden="true">↑</span></a></footer>
@@ -92,5 +98,6 @@
   <script src="./play.js" defer></script>
   <script src="./game.js" defer></script>
   <script src="./farm.js" defer></script>
+  <script src="./mmti.js" defer></script>
 </body>
 </html>

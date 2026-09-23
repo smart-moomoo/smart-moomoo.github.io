@@ -1,12 +1,12 @@
-// Switches between the two games living on this page without navigating
-// away, and tells game.js which one is currently visible (so, e.g., the
-// Space key doesn't flap the bird while the Farm tab is showing).
+// Switches between the games on this page without navigating away, and
+// exposes the visible one as window.PlayActiveView so each game can ignore
+// input and pause its clock while hidden.
 (() => {
-  const tabs = [
-    { btn: document.getElementById('tab-game'), view: document.getElementById('view-game'), id: 'game' },
-    { btn: document.getElementById('tab-farm'), view: document.getElementById('view-farm'), id: 'farm' },
-  ];
-  if (!tabs[0].btn || !tabs[1].btn) return;
+  const tabs = ['game', 'farm', 'mmti']
+    .map((id) => ({ id, btn: document.getElementById(`tab-${id}`), view: document.getElementById(`view-${id}`) }))
+    .filter((t) => t.btn && t.view);
+  if (!tabs.length) return;
+  const ids = tabs.map((t) => t.id);
 
   function activate(id) {
     for (const t of tabs) {
@@ -21,10 +21,9 @@
 
   tabs.forEach((t) => t.btn.addEventListener('click', () => activate(t.id)));
 
-  const queryView = new URLSearchParams(window.location.search).get('view');
-  let initial = queryView === 'game' || queryView === 'farm' ? queryView : null;
-  if (!initial) {
+  let initial = new URLSearchParams(window.location.search).get('view');
+  if (!ids.includes(initial)) {
     try { initial = localStorage.getItem('play-active-view'); } catch {}
   }
-  activate(initial === 'game' || initial === 'farm' ? initial : 'game');
+  activate(ids.includes(initial) ? initial : ids[0]);
 })();

@@ -1,0 +1,36 @@
+name: "MMTI · Event or mechanic"
+description: Propose something that happens in the MMTI colony.
+title: "[MMTI event] "
+labels: ["mmti", "mmti-event"]
+body:
+  - type: textarea
+    id: experience
+    attributes:
+      label: What happens?
+      description: Describe the situation the player faces.
+      placeholder: A visitor asks for shelter during a storm, but the colony is short on beds…
+    validations:
+      required: true
+  - type: textarea
+    id: choices
+    attributes:
+      label: What can the player do?
+      description: List the options. Ideally each one can work, so the choice says something about the player.
+    validations:
+      required: true
+  - type: textarea
+    id: fun
+    attributes:
+      label: Why would it be enjoyable?
+    validations:
+      required: true
+  - type: textarea
+    id: conditions
+    attributes:
+      label: Conditions it varies (optional)
+      description: e.g. deadline vs. no deadline, scarce vs. plentiful supplies, a familiar colonist vs. a stranger.
+  - type: textarea
+    id: code
+    attributes:
+      label: Code or mechanics sketch (optional)
+      render: js

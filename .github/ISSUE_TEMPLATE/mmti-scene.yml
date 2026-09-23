@@ -1,0 +1,26 @@
+name: "MMTI · Result scene"
+description: Propose an everyday situation that expresses a pattern.
+title: "[MMTI scene] "
+labels: ["mmti", "mmti-scene"]
+body:
+  - type: dropdown
+    id: condition
+    attributes:
+      label: Condition
+      options:
+        - After a setback, under an urgent deadline
+        - After a setback, with no urgent deadline
+    validations:
+      required: true
+  - type: textarea
+    id: switch
+    attributes:
+      label: Sentence for someone who changes plans before learning what went wrong
+    validations:
+      required: true
+  - type: textarea
+    id: seek
+    attributes:
+      label: Sentence for someone who finds out what went wrong first
+    validations:
+      required: true

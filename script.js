@@ -11,6 +11,7 @@ const sections = navigation
   .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
 
 function updateNavigation() {
+  if (!sections.length) return;
   let current = sections[0];
   for (const section of sections) {
     if (section.getBoundingClientRect().top <= 150) current = section;

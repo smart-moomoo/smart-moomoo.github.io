@@ -26,7 +26,45 @@ window.PixelArt = (() => {
     m: '#9a9a92', M: '#c9c9c2', y: '#3a3a36',
   };
 
+  const PEOPLE_PALETTE = {
+    '#': '#171512',
+    h: '#3b2a20', s: '#f0c39a', e: '#171512', l: '#8a5a3c', m: '#b5543c',
+    w: '#fffefa', c: '#28665a', C: '#3d8a78',
+  };
+
   const SPRITES = {
+    keeper_a: [
+      "..............",
+      "....######....",
+      "...#hhhhhh#...",
+      "..#hhhhhhhh#..",
+      "..#hssssssh#..",
+      "..#sesssses#..",
+      "..#ssssssss#..",
+      "..#sssmmsss#..",
+      "...#ssssss#...",
+      "..##wwccww##..",
+      ".#cCccccccCc#.",
+      ".#cCccccccCc#.",
+      ".#cccccccccc#.",
+      ".############.",
+    ],
+    keeper_b: [
+      "..............",
+      "....######....",
+      "...#hhhhhh#...",
+      "..#hhhhhhhh#..",
+      "..#hssssssh#..",
+      "..#slssssls#..",
+      "..#ssssssss#..",
+      "..#sssmmsss#..",
+      "...#ssssss#...",
+      "..##wwccww##..",
+      ".#cCccccccCc#.",
+      ".#cCccccccCc#.",
+      ".#cccccccccc#.",
+      ".############.",
+    ],
     sprout: [
       "..............",
       "..............",
@@ -367,5 +405,5 @@ window.PixelArt = (() => {
     return canvas;
   }
 
-  return { GRID, PLANT_PALETTE, ANIMAL_PALETTE, MISC_PALETTE, SPRITES, draw, createCanvas };
+  return { GRID, PLANT_PALETTE, ANIMAL_PALETTE, MISC_PALETTE, PEOPLE_PALETTE, SPRITES, draw, createCanvas };
 })();

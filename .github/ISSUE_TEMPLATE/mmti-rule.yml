@@ -1,0 +1,23 @@
+name: "MMTI · Interpretation rule"
+description: Propose what a behavior means, or a condition the model is missing.
+title: "[MMTI rule] "
+labels: ["mmti", "mmti-rule"]
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Which behavior?
+      description: The event and the player action you are interpreting.
+    validations:
+      required: true
+  - type: textarea
+    id: meaning
+    attributes:
+      label: What should it count as, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: missing
+    attributes:
+      label: Missing condition (optional)
+      description: A circumstance that would explain responses the current rule treats as inconsistent.
