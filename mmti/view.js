@@ -14,10 +14,11 @@
   const SPEEDS = [1, 3, 6];
   const INK = '#171512';
   const ISSUES_URL = 'https://github.com/smart-moomoo/smart-moomoo.github.io/issues/new';
-  const WORK_LABEL = { build: 'Construct', repair: 'Repair', chop: 'Chop', harvest: 'Harvest' };
+  const WORK_LABEL = { build: 'Construct', repair: 'Repair', cook: 'Cook', grow: 'Grow', chop: 'Chop', haul: 'Haul' };
+  const ZONE_TOOLS = { stock: 'stock', grow: 'grow', clearzone: 'clear' };
 
   let hadSave = false;
-  try { hadSave = !!localStorage.getItem('mmti-colony-v2'); } catch {}
+  try { hadSave = !!localStorage.getItem('mmti-colony-v3'); } catch {}
   M.load();
   const S = () => M.state;
 
@@ -56,10 +57,12 @@
     return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`;
   }
   const fmtH = (x) => `${Math.max(0, x).toFixed(1)}h`;
+  const SEASONS = ['Spring', 'Summer', 'Fall', 'Winter'];
   const clock = (t) => {
     const hr = t % 24;
     const hh = Math.floor(hr), mm = Math.floor((hr - hh) * 60 / 10) * 10;
-    return `Day ${Math.floor(t / 24) + 1} · ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    const d = Math.floor(t / 24) % 20;
+    return `${SEASONS[Math.floor(d / 5)]} ${(d % 5) + 1} · ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   };
 
   // ---------- sprites ----------
@@ -113,16 +116,39 @@
       for (const y of [7, 9, 11]) R(g, 5, y, 6, 1, on ? (f ? '#ffc86b' : '#ff9a3d') : '#2e1c19');
       R(g, 3, 14, 2, 2, INK); R(g, 11, 14, 2, 2, INK);
     }),
-    stove: (f) => sprite(`stove${f}`, 16, 16, (g) => {
+    stove: (f, lit = 1) => sprite(`stove${f}${lit}`, 16, 16, (g) => {
       R(g, 6, 0, 4, 5, INK); R(g, 7, 0, 2, 4, '#4a4a4a'); R(g, 2, 4, 12, 11, INK); R(g, 3, 5, 10, 9, '#3a3a3a'); R(g, 3, 5, 10, 1, '#5a5a5a');
-      R(g, 5, 8, 6, 4, INK); R(g, 6, 9, 4, 2, f ? '#ffb347' : '#ff7a2e'); R(g, 7 + f, 9, 1, 1, '#ffe08a'); R(g, 3, 14, 2, 2, INK); R(g, 11, 14, 2, 2, INK);
+      R(g, 5, 8, 6, 4, INK);
+      if (lit) { R(g, 6, 9, 4, 2, f ? '#ffb347' : '#ff7a2e'); R(g, 7 + f, 9, 1, 1, '#ffe08a'); } else R(g, 6, 10, 4, 1, '#4a4a4a');
+      R(g, 3, 14, 2, 2, INK); R(g, 11, 14, 2, 2, INK);
     }),
-    campfire: (f) => sprite(`campfire${f}`, 16, 16, (g) => {
+    campfire: (f, lit = 1) => sprite(`campfire${f}${lit}`, 16, 16, (g) => {
       R(g, 2, 11, 12, 4, INK); R(g, 3, 12, 2, 2, '#8a8a82'); R(g, 6, 13, 2, 1, '#9a9a92'); R(g, 9, 12, 2, 2, '#8a8a82'); R(g, 12, 12, 1, 2, '#9a9a92');
-      R(g, 4, 10, 8, 2, '#6b4a23');
+      R(g, 4, 10, 8, 2, lit ? '#6b4a23' : '#3a3a3a');
+      if (!lit) return;
       const flame = f ? [[6, 5, 4, 5], [5, 7, 6, 3], [7, 3, 2, 2]] : [[5, 6, 5, 4], [6, 4, 4, 3], [8, 2, 1, 2]];
       for (const [x, y, w, hh] of flame) R(g, x, y, w, hh, '#ff7a2e');
       R(g, 7, 6, 2, 3, '#ffd35a');
+    }),
+    potato: () => sprite('potato', 16, 16, (g) => {
+      R(g, 3, 5, 10, 10, INK); R(g, 4, 6, 8, 8, '#b08a4a'); R(g, 4, 6, 8, 2, '#c9a466'); R(g, 5, 4, 6, 2, INK); R(g, 6, 4, 4, 1, '#8a6a34');
+      for (const [x, y] of [[5, 9], [8, 8], [10, 11], [6, 12]]) R(g, x, y, 2, 1, '#8a6a34');
+    }),
+    berries: () => sprite('berries', 16, 16, (g) => {
+      R(g, 2, 8, 12, 7, INK); R(g, 3, 9, 10, 5, '#a8753f'); R(g, 3, 11, 10, 1, '#8a5a2b');
+      for (const [x, y] of [[3, 6], [6, 5], [9, 6], [5, 7], [8, 7], [11, 7]]) { R(g, x, y, 2, 2, '#d8323c'); R(g, x, y, 1, 1, '#ff9a9a'); }
+    }),
+    meal: () => sprite('meal', 16, 16, (g) => {
+      R(g, 1, 8, 14, 6, INK); R(g, 2, 9, 12, 3, '#f4efe4'); R(g, 3, 12, 10, 1, '#d8d0bf');
+      R(g, 4, 6, 8, 4, INK); R(g, 5, 6, 6, 3, '#e0a040'); R(g, 6, 6, 2, 1, '#6fae47'); R(g, 9, 7, 1, 1, '#c0533a');
+    }),
+    stockTile: () => sprite('stockTile', 16, 16, (g) => { g.fillStyle = 'rgba(255,214,110,.13)'; g.fillRect(0, 0, 16, 16); for (let i = 0; i < 16; i += 4) { R(g, i, 0, 2, 1, 'rgba(255,214,110,.5)'); R(g, 0, i, 1, 2, 'rgba(255,214,110,.5)'); } }),
+    soil: () => sprite('soil', 16, 16, (g) => { R(g, 0, 0, 16, 16, '#6b4a2b'); for (let y = 1; y < 16; y += 4) { R(g, 0, y, 16, 1, '#5a3c20'); R(g, 0, y + 1, 16, 1, '#7a5934'); } }),
+    crop: (stage) => sprite(`crop${stage}`, 16, 16, (g) => {
+      if (stage === 0) { R(g, 7, 9, 2, 3, '#6fae47'); return; }
+      if (stage === 1) { R(g, 7, 7, 2, 6, '#4f8a33'); R(g, 5, 7, 2, 2, '#6fae47'); R(g, 9, 6, 2, 2, '#6fae47'); return; }
+      R(g, 7, 4, 2, 9, '#3f7a2a'); R(g, 4, 5, 3, 3, '#5ea447'); R(g, 9, 4, 3, 3, '#5ea447'); R(g, 5, 9, 2, 2, '#4f8a33'); R(g, 9, 9, 3, 2, '#4f8a33');
+      if (stage === 3) { R(g, 3, 12, 3, 2, '#c9a466'); R(g, 10, 12, 3, 2, '#c9a466'); R(g, 3, 12, 3, 1, INK); R(g, 10, 12, 3, 1, INK); }
     }),
     keeper: () => sprite('keeper', 16, 16, (g) => {
       if (window.PixelArt) window.PixelArt.draw(g, 'keeper_a', window.PixelArt.PEOPLE_PALETTE, 1, 1, 1);
@@ -174,6 +200,12 @@
       case 'campfire': return SPR.campfire(0);
       case 'logs': return SPR.logs();
       case 'crate': return SPR.crate();
+      case 'potato': return SPR.potato();
+      case 'meal': return SPR.meal();
+      case 'berries': return SPR.berries();
+      case 'stock': return sprite('stockicon', 16, 16, (g) => { R(g, 1, 1, 14, 14, '#c9a55a'); R(g, 2, 2, 12, 12, '#3a3f44'); g.drawImage(SPR.logs(), 0, 0); });
+      case 'grow': return sprite('growicon', 16, 16, (g) => { g.drawImage(SPR.soil(), 0, 0); g.drawImage(SPR.crop(2), 0, 0); });
+      case 'clearzone': return sprite('clearzone', 16, 16, (g) => { R(g, 1, 1, 14, 14, '#6b4a2b'); for (let i = 2; i < 14; i++) { R(g, i, i, 2, 2, '#b23a2a'); R(g, 15 - i, i, 2, 2, '#b23a2a'); } });
       case 'wall': return sprite('wallicon', 16, 16, (g) => drawWall(g, 0, 0, 0, 0));
       case 'door': return sprite('dooricon', 16, 16, (g) => drawDoor(g, 0, 0));
       case 'chop': return SPR.tree(0);
@@ -242,7 +274,7 @@
   const el = {
     clock: h('span', { class: 'mm-clock' }),
     weather: h('span', { class: 'mm-weather' }),
-    wood: h('b'), food: h('b'),
+    wood: h('b'), food: h('b'), meal: h('b'),
     speed: [],
     bar: h('div', { class: 'mm-colonists', 'aria-label': 'Colonists' }),
     letters: h('div', { class: 'mm-letters', 'aria-label': 'Letters' }),
@@ -263,7 +295,8 @@
   const top = h('div', { class: 'mm-top' },
     el.clock, el.weather,
     h('span', { class: 'mm-chip', title: 'Wood' }, iconCanvas('logs', 1.25), el.wood),
-    h('span', { class: 'mm-chip', title: 'Food' }, iconCanvas('crate', 1.25), el.food),
+    h('span', { class: 'mm-chip', title: 'Raw food: potatoes and berries' }, iconCanvas('potato', 1.25), el.food),
+    h('span', { class: 'mm-chip', title: 'Cooked meals' }, iconCanvas('meal', 1.25), el.meal),
     speedGroup,
     h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: openMenu } }, 'Menu'));
   const stage = h('div', { class: 'mm-stage' }, canvas, el.letters, el.hover, el.toast);
@@ -278,8 +311,10 @@
   const tools = h('div', { class: 'mm-tools' },
     h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Architect'),
       M.BUILDABLE.map((k) => toolButton(k, M.DEFS[k].label, `${M.DEFS[k].cost} wood`))),
+    h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Zones'),
+      toolButton('stock', 'Stockpile'), toolButton('grow', 'Field'), toolButton('clearzone', 'Remove zone')),
     h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Orders'),
-      toolButton('chop', 'Chop'), toolButton('harvest', 'Harvest'), toolButton('cancel', 'Cancel')),
+      toolButton('chop', 'Chop'), toolButton('harvest', 'Pick berries'), toolButton('cancel', 'Cancel')),
     h('div', { class: 'mm-toolrow mm-toolrow-views' },
       el.viewBtn,
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('work') } }, 'Work'),
@@ -307,6 +342,9 @@
       wall: 'Click or drag to plan walls.', door: 'Click a wall gap to plan a door.',
       chop: 'Drag over trees to mark them for chopping.', harvest: 'Drag over berry bushes to mark them for harvest.',
       cancel: 'Drag to remove plans and marks.',
+      stock: 'Drag to mark a stockpile. Colonists haul goods there; indoors they keep longer.',
+      grow: 'Drag over open ground to mark a field. Colonists plant potatoes there when it is warm.',
+      clearzone: 'Drag to remove stockpiles and fields.',
     };
     el.tip.textContent = t ? `${tips[t.kind] || `Click to place a ${M.DEFS[t.kind].label.toLowerCase()}.`} Right-click or Esc to stop.` : '';
   }
@@ -369,7 +407,10 @@
     ui.drag = null;
     if (!d || !ui.tool) return;
     const k = ui.tool.kind;
-    if (k === 'chop' || k === 'harvest' || k === 'cancel') {
+    if (ZONE_TOOLS[k]) {
+      const res = M.command({ type: 'zone', mode: ZONE_TOOLS[k], x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1 });
+      if (!res.ok) toast(res.reason);
+    } else if (k === 'chop' || k === 'harvest' || k === 'cancel') {
       const res = M.command({ type: 'designate', mode: k, x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1 });
       if (!res.ok) toast(k === 'chop' ? 'Drag over trees to mark them' : k === 'harvest' ? 'Drag over berry bushes to mark them' : 'Nothing to cancel there');
     }
@@ -562,14 +603,18 @@
   }
   function bar(g, x, y, f, col) { R(g, x, y, 14, 3, INK); R(g, x + 1, y + 1, Math.round(12 * Math.max(0, Math.min(1, f))), 1, col); }
 
+  function itemSprite(kind) {
+    return kind === 'wood' ? SPR.logs() : kind === 'potato' ? SPR.potato() : kind === 'berries' ? SPR.berries() : SPR.meal();
+  }
+
   function thingSprite(th, now) {
     const f = Math.floor(now / 250) % 2;
     switch (th.type) {
       case 'bed': return SPR.bed();
       case 'table': return SPR.table();
-      case 'heater': return SPR.heater(th.broken ? 0 : 1, f);
-      case 'stove': return SPR.stove(f);
-      case 'campfire': return SPR.campfire(f);
+      case 'heater': return SPR.heater(th.lit ? 1 : 0, f);
+      case 'stove': return SPR.stove(f, th.lit || th.bp ? 1 : 0);
+      case 'campfire': return SPR.campfire(f, th.lit || th.bp ? 1 : 0);
       case 'bush': return SPR.bush(!!th.berries);
       case 'keeper': return SPR.keeper();
       default: return null;
@@ -581,7 +626,11 @@
     if (th.bp) g.globalAlpha = 0.45;
     if (th.type === 'wall') drawWall(g, px, py, th.x, th.y);
     else if (th.type === 'door') drawDoor(g, px, py);
-    else if (th.type === 'tree') g.drawImage(SPR.tree(th.variant || 0), px, py - 6);
+    else if (th.type === 'tree') {
+      const gr = th.growth == null ? 1 : th.growth;
+      if (gr >= 0.5) g.drawImage(SPR.tree(th.variant || 0), px, py - 6);
+      else g.drawImage(SPR.tree(th.variant || 0), px + 4, py + 4 - 3, 8, 11);
+    }
     else { const sp = thingSprite(th, now); if (sp) g.drawImage(sp, px, py); }
     g.globalAlpha = 1;
     if (th.bp) {
@@ -597,6 +646,11 @@
     if (th.des === 'chop') g.drawImage(SPR.axe(), px, py - 6);
     if (th.des === 'harvest') g.drawImage(SPR.pick(), px, py - 2);
     if (th.type === 'tree' && th.progress > 0) bar(g, px + 1, py - 9, th.progress / 1.2, '#e0b64a');
+    const fd = M.DEFS[th.type];
+    if (fd.fuelCap && !th.bp) {
+      const f = th.fuel / fd.fuelCap;
+      if (f < 0.5) bar(g, px + 1, py + 14, f, f < 0.2 ? '#d8323c' : '#e0b64a');
+    }
     if (th.type === 'heater' && th.broken) {
       for (let k = 0; k < 3; k++) {
         const ph = ((now / 1400) + k / 3) % 1;
@@ -619,7 +673,10 @@
       case 'build': return th && th.progress != null ? th.progress / M.DEFS[th.type].work : null;
       case 'repair': return th && th.diagnosis ? (th.repairProgress || 0) / M.HEATER_CAUSES[th.diagnosis].work : null;
       case 'chop': return th ? (th.progress || 0) / 1.2 : null;
-      case 'harvest': return th ? (th.progress || 0) / 0.8 : null;
+      case 'pick': return th ? (th.progress || 0) / 0.6 : null;
+      case 'sow': return j.work / 0.3;
+      case 'harvestCrop': return j.work / 0.4;
+      case 'cook': return j.work / 0.6;
       case 'inspect': return inc && inc.reportT ? (S().t - inc.startT) / (inc.reportT - inc.startT) : null;
       default: return null;
     }
@@ -641,6 +698,7 @@
     g.fillStyle = 'rgba(0,0,0,.28)';
     g.fillRect(px + 3, py + 14, 10, 2);
     g.drawImage(colonistSprite(c, frame, c.facing < 0, false), px + 3, py + 1 - (moving && frame ? 1 : 0));
+    if (c.carry) g.drawImage(itemSprite(c.carry.kind), px + 4, py - 5, 9, 9);
     const prog = jobProgress(c);
     if (prog != null) bar(g, px + 1, py - 4, prog, '#ffd23d');
     if (c.cold > 0.15) { const bx = px + 13, by = py - 1; R(g, bx, by + 1, 5, 1, '#bfe3ff'); R(g, bx + 2, by - 1, 1, 5, '#bfe3ff'); }
@@ -656,12 +714,22 @@
       const sx = Math.floor((k * 16 + now / 400) % 14);
       R(g, x * TS + sx, y * TS + 3 + Math.floor(k * 9), 3, 1, '#6ea3d6');
     }
-    for (const [x, y] of s.zones.food) { g.fillStyle = 'rgba(255,214,110,.16)'; g.fillRect(x * TS, y * TS, TS, TS); }
-    for (const [x, y] of s.zones.wood) { g.fillStyle = 'rgba(255,214,110,.16)'; g.fillRect(x * TS, y * TS, TS, TS); }
-    if (s.stock.food > 0) g.drawImage(SPR.crate(), s.zones.food[0][0] * TS, s.zones.food[0][1] * TS);
-    if (s.stock.food > 18) g.drawImage(SPR.crate(), s.zones.food[1][0] * TS, s.zones.food[1][1] * TS);
-    if (s.stock.wood > 0) g.drawImage(SPR.logs(), s.zones.wood[0][0] * TS, s.zones.wood[0][1] * TS);
-    if (s.stock.wood > 40) g.drawImage(SPR.logs(), s.zones.wood[1][0] * TS, s.zones.wood[1][1] * TS);
+    for (const [k, p] of Object.entries(s.zones.grow)) {
+      const i = Number(k), px = (i % W) * TS, py = ((i / W) | 0) * TS;
+      g.drawImage(SPR.soil(), px, py);
+      if (p.sown) g.drawImage(SPR.crop(p.growth >= 1 ? 3 : p.growth > 0.6 ? 2 : p.growth > 0.25 ? 1 : 0), px, py);
+    }
+    for (const i of s.zones.stock) g.drawImage(SPR.stockTile(), (i % W) * TS, ((i / W) | 0) * TS);
+    g.font = 'bold 6px sans-serif';
+    for (const it of s.items) {
+      const px = it.x * TS, py = it.y * TS;
+      g.drawImage(itemSprite(it.kind), px, py);
+      const label = String(it.n);
+      g.fillStyle = 'rgba(23,21,18,.85)';
+      g.fillRect(px + 15 - label.length * 4, py + 10, label.length * 4 + 1, 6);
+      g.fillStyle = '#fffefa';
+      g.fillText(label, px + 16 - label.length * 4, py + 15);
+    }
 
     const drawables = [];
     for (const th of s.things) drawables.push([th.y + (th.type === 'tree' ? 0.2 : 0), 0, th]);
@@ -690,7 +758,7 @@
       g.fillRect(0, 0, CW, CH);
       g.globalCompositeOperation = 'lighter';
       for (const th of s.things) {
-        const hot = (th.type === 'campfire' || th.type === 'stove' || (th.type === 'heater' && !th.broken)) && !th.bp;
+        const hot = th.lit && !th.bp;
         if (!hot) continue;
         const cx = th.x * TS + 8, cy = th.y * TS + 8;
         const grd = g.createRadialGradient(cx, cy, 2, cx, cy, 56);
@@ -732,7 +800,7 @@
     if (ui.drag && ui.tool && !M.BUILDABLE.includes(ui.tool.kind)) {
       const d = ui.drag;
       const x0 = Math.min(d.x0, d.x1), y0 = Math.min(d.y0, d.y1), x1 = Math.max(d.x0, d.x1), y1 = Math.max(d.y0, d.y1);
-      g.fillStyle = ui.tool.kind === 'cancel' ? 'rgba(216,50,60,.2)' : 'rgba(255,214,110,.22)';
+      g.fillStyle = ui.tool.kind === 'cancel' || ui.tool.kind === 'clearzone' ? 'rgba(216,50,60,.2)' : 'rgba(255,214,110,.22)';
       g.fillRect(x0 * TS, y0 * TS, (x1 - x0 + 1) * TS, (y1 - y0 + 1) * TS);
       g.strokeStyle = '#ffd23d';
       g.lineWidth = 1;
@@ -765,9 +833,18 @@
     if (!j) return 'Idle';
     const th = j.targetId != null ? q.byId(j.targetId) : null;
     const going = j.stage === 'walk' ? 'Going to ' : '';
+    const fetching = j.stage === 'fetch';
     switch (j.kind) {
+      case 'deliver': return fetching ? `Fetching wood for a ${th ? M.DEFS[th.type].label.toLowerCase() : 'building'}` : `Carrying wood to a ${th ? M.DEFS[th.type].label.toLowerCase() : 'building'}`;
+      case 'deliverRepair': return fetching ? 'Fetching wood for the heater repair' : 'Carrying wood to the heater';
+      case 'refuel': return fetching ? `Fetching wood for the ${th ? M.DEFS[th.type].label.toLowerCase() : 'fire'}` : `Refueling the ${th ? M.DEFS[th.type].label.toLowerCase() : 'fire'}`;
+      case 'haul': return fetching ? 'Going to pick up goods' : 'Hauling to the stockpile';
+      case 'cook': return fetching ? 'Fetching food to cook' : j.stage === 'walk' ? 'Going to cook' : 'Cooking';
+      case 'sow': return j.stage === 'walk' ? 'Going to plant' : 'Planting potatoes';
+      case 'harvestCrop': return j.stage === 'walk' ? 'Going to harvest' : 'Harvesting potatoes';
+      case 'pick': return j.stage === 'walk' ? 'Going to pick berries' : 'Picking berries';
       case 'sleep': return c.sleeping ? 'Sleeping' : 'Going to bed';
-      case 'eat': return j.stage === 'walk' ? 'Going to eat' : 'Eating';
+      case 'eat': return j.stage === 'work' ? 'Eating' : 'Going to eat';
       case 'build': return `${going ? 'Going to build' : 'Building'} ${th ? M.DEFS[th.type].label.toLowerCase() : ''}`.trim();
       case 'repair': return j.stage === 'walk' ? 'Going to repair the heater' : 'Repairing the heater';
       case 'chop': return j.stage === 'walk' ? 'Going to chop a tree' : 'Chopping a tree';
@@ -812,8 +889,10 @@
     const out = q.outdoorTemp();
     el.weather.textContent = `${s.weather.label ? `${s.weather.label} · ` : ''}${Math.round(out)}°C outside`;
     el.weather.classList.toggle('is-cold', out < 2);
-    el.wood.textContent = s.stock.wood;
-    el.food.textContent = s.stock.food;
+    const cnt = q.counts();
+    el.wood.textContent = cnt.wood;
+    el.food.textContent = cnt.potato + cnt.berries;
+    el.meal.textContent = cnt.meal;
   }
 
   function hoverText() {
@@ -823,7 +902,12 @@
     const r = q.roomAt(x, y);
     const th = q.thingAt(x, y);
     const place = r && !r.outdoors ? `${q.roomName(r)} · ${Math.round(r.temp)}°C` : `Outdoors · ${Math.round(q.outdoorTemp())}°C`;
-    return th ? `${M.DEFS[th.type].label}${th.bp ? ' (planned)' : ''} — ${place}` : place;
+    const it = q.itemAt(x, y), crop = q.growAt(x, y);
+    const what = th ? `${M.DEFS[th.type].label}${th.bp ? ' (planned)' : ''}`
+      : it ? `${M.ITEMS[it.kind].label} ×${it.n}`
+        : crop ? (crop.sown ? `Potatoes, ${Math.round(crop.growth * 100)}% grown` : 'Field, unplanted')
+          : q.isStock(x, y) ? 'Stockpile' : null;
+    return what ? `${what} — ${place}` : place;
   }
 
   // inspect pane: rebuilt only when its signature changes, live numbers refreshed in between
@@ -834,6 +918,12 @@
   function needBar(label, v, col) {
     const fill = h('span', { style: `width:${Math.round(v * 100)}%;background:${col}` });
     return h('div', { class: 'mm-need' }, h('span', null, label), h('i', null, fill));
+  }
+
+  function fuelLine(th) {
+    const d = M.DEFS[th.type];
+    const f = th.fuel || 0;
+    return h('p', { class: f < d.fuelCap * 0.2 ? 'mm-warn' : null }, `Fuel: ${f.toFixed(1)} of ${d.fuelCap} wood · burns 1 wood every ${d.burnH}h.`);
   }
 
   function inspectContent() {
@@ -855,7 +945,31 @@
       };
     }
     if (sel.kind === 'tile') {
-      return { sig: `t${sel.x},${sel.y}`, build: () => { const r = q.roomAt(sel.x, sel.y); return [h('h4', null, r && !r.outdoors ? q.roomName(r) : 'Outdoors'), h('p', null, r && !r.outdoors ? `${Math.round(r.temp)}°C inside` : `${Math.round(q.outdoorTemp())}°C`)]; } };
+      const it = q.itemAt(sel.x, sel.y), crop = q.growAt(sel.x, sel.y), r = q.roomAt(sel.x, sel.y);
+      const place = r && !r.outdoors ? `${q.roomName(r)} · ${Math.round(r.temp)}°C` : `Outdoors · ${Math.round(q.outdoorTemp())}°C`;
+      return {
+        sig: `t${sel.x},${sel.y}${it ? it.kind + it.n + Math.round(it.age) : ''}${crop ? `${crop.sown}${Math.round(crop.growth * 20)}` : ''}${place}`,
+        build: () => {
+          const out = [];
+          if (it) {
+            const d = M.ITEMS[it.kind];
+            out.push(h('h4', null, `${d.label} ×${it.n}`));
+            if (d.spoil) {
+              const f = q.spoilFactor(sel.x, sel.y);
+              out.push(h('p', null, f === 0 ? 'Frozen: not spoiling.' : `Spoils in about ${((d.spoil - it.age) / f / 24).toFixed(1)} days here.`));
+              out.push(h('p', { class: 'mm-muted' }, 'Food keeps longer indoors, and stops spoiling below freezing.'));
+            }
+            if (!q.isStock(sel.x, sel.y)) out.push(h('p', { class: 'mm-muted' }, 'Lying loose; a hauler will carry it to a stockpile.'));
+          } else if (crop) {
+            out.push(h('h4', null, 'Field'));
+            out.push(h('p', null, !crop.sown ? 'Unplanted. Colonists plant potatoes here when it is above 4°C, outside winter.'
+              : crop.growth >= 1 ? `Potatoes, ripe. Harvest gives 2 potatoes.`
+                : `Potatoes, ${Math.round(crop.growth * 100)}% grown. They grow in warm daylight and die in hard frost (below −6°C).`));
+          } else out.push(h('h4', null, q.isStock(sel.x, sel.y) ? 'Stockpile' : r && !r.outdoors ? q.roomName(r) : 'Ground'));
+          out.push(h('p', { class: 'mm-muted' }, place));
+          return out;
+        },
+      };
     }
     if (sel.kind === 'thing') {
       const th = q.byId(sel.id);
@@ -864,9 +978,9 @@
       const r = q.roomAt(th.x, th.y);
       const where = r && !r.outdoors ? `${q.roomName(r)} · ${Math.round(r.temp)}°C` : null;
       if (th.bp) {
-        return { sig: `bp${th.id}${Math.round((th.progress || 0) * 10)}${th.paid}`, build: () => [
+        return { sig: `bp${th.id}${Math.round((th.progress || 0) * 10)}${th.delivered}`, build: () => [
           h('h4', null, `${d.label} (planned)`),
-          h('p', null, `${d.cost} wood${th.paid ? ' (paid)' : s.stock.wood < d.cost ? ' — not enough wood yet' : ''}. ${Math.round(((th.progress || 0) / d.work) * 100)}% built.`),
+          h('p', null, `Wood delivered: ${th.delivered || 0} of ${d.cost}${(th.delivered || 0) < d.cost && q.counts().wood < d.cost - (th.delivered || 0) ? ' — not enough wood in the colony' : ''}. ${Math.round(((th.progress || 0) / d.work) * 100)}% built.`),
           where ? h('p', { class: 'mm-muted' }, where) : null,
           h('div', { class: 'mm-gizmos' }, gizmo('Cancel plan', () => order({ type: 'designate', mode: 'cancel', x0: th.x, y0: th.y, x1: th.x, y1: th.y }))),
         ] };
@@ -875,10 +989,11 @@
         const heatingInc = inc && inc.kind === 'heating' && inc.heaterId === th.id ? inc : null;
         const who = heatingInc && s.colonists.find((c) => c.id === heatingInc.inspectorId);
         return {
-          sig: `h${th.id}${th.broken}${th.diagnosis}${th.repairOrdered}${!!heatingInc}${Math.round((th.repairProgress || 0) * 10)}${where}`,
+          sig: `h${th.id}${th.broken}${th.diagnosis}${th.repairOrdered}${!!heatingInc}${Math.round((th.repairProgress || 0) * 10)}${where}${Math.round(th.fuel)}${th.lit}${th.repairDelivered}`,
           build: () => {
             const out = [h('h4', null, 'Heater'), where ? h('p', { class: 'mm-muted' }, where) : null];
-            if (!th.broken) out.push(h('p', null, 'Working. Keeps the room around 21°C.'));
+            out.push(fuelLine(th));
+            if (!th.broken) out.push(h('p', null, th.lit ? 'Burning. Keeps the room around 21°C.' : th.fuel > 0 ? 'Idle while it is warm outside.' : 'Out of fuel.'));
             else if (!th.diagnosis) {
               const live = h('span');
               inspectLive = () => { live.textContent = heatingInc ? fmtH(heatingInc.reportT - S().t) : '—'; };
@@ -901,16 +1016,22 @@
               out.push(h('div', { class: 'mm-gizmos' }, th.repairOrdered
                 ? gizmo('Cancel repair', () => order({ type: 'cancel-repair', id: th.id }))
                 : gizmo('Repair', () => order({ type: 'repair', id: th.id }), th.diagnosis ? null : 'Waiting for the inspection')));
-              if (th.repairOrdered) out.push(h('p', { class: 'mm-muted' }, `Repair ordered. ${Math.round(((th.repairProgress || 0) / M.HEATER_CAUSES[th.diagnosis].work) * 100)}% done.`));
+              if (th.repairOrdered) {
+                const need = M.HEATER_CAUSES[th.diagnosis].wood;
+                out.push(h('p', { class: 'mm-muted' }, `Repair ordered.${need ? ` Wood delivered: ${th.repairDelivered || 0} of ${need}.` : ''} ${Math.round(((th.repairProgress || 0) / M.HEATER_CAUSES[th.diagnosis].work) * 100)}% done.`));
+              }
             }
             return out;
           },
         };
       }
-      if (th.type === 'tree') return { sig: `tr${th.id}${th.des}`, build: () => [h('h4', null, 'Tree'), h('p', null, 'Gives 10 wood when chopped.'), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'chop' ? 'Don’t chop' : 'Chop', () => order({ type: 'designate', mode: th.des === 'chop' ? 'cancel' : 'chop', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
-      if (th.type === 'bush') return { sig: `bu${th.id}${th.des}${th.berries}`, build: () => [h('h4', null, 'Berry bush'), h('p', null, th.berries ? 'Ripe. Gives 6 food.' : `Regrowing, ripe in ${fmtH(th.regrowAt - s.t)}.`), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'harvest' ? 'Stop harvesting' : 'Harvest', () => order({ type: 'designate', mode: th.des === 'harvest' ? 'cancel' : 'harvest', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
+      if (th.type === 'tree') return { sig: `tr${th.id}${th.des}${Math.round((th.growth == null ? 1 : th.growth) * 20)}`, build: () => [h('h4', null, (th.growth == null ? 1 : th.growth) < 0.5 ? 'Sapling' : 'Tree'), h('p', null, `Gives about ${Math.max(1, Math.round(10 * (th.growth == null ? 1 : th.growth)))} wood when chopped.${(th.growth == null ? 1 : th.growth) < 0.5 ? ' Too young to chop yet.' : (th.growth == null ? 1 : th.growth) < 1 ? ' Still growing.' : ''}`), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'chop' ? 'Don’t chop' : 'Chop', () => order({ type: 'designate', mode: th.des === 'chop' ? 'cancel' : 'chop', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
+      if (th.type === 'bush') return { sig: `bu${th.id}${th.des}${th.berries}`, build: () => [h('h4', null, 'Berry bush'), h('p', null, th.berries ? 'Ripe. Gives 4 berries, which spoil within about two days.' : `Regrowing${q.outdoorTemp() <= 5 ? ' when it warms up' : `, ripe in ${fmtH(th.regrowAt - s.t)}`}.`), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'harvest' ? 'Stop picking' : 'Pick berries', () => order({ type: 'designate', mode: th.des === 'harvest' ? 'cancel' : 'harvest', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
       if (th.type === 'keeper') return { sig: 'keeper', build: () => [h('h4', null, 'The Archivist'), h('p', null, 'She has been watching how the colony handles trouble.'), h('div', { class: 'mm-gizmos' }, gizmo('Talk to her', () => openModal('reflect')))] };
-      return { sig: `o${th.id}${where}`, build: () => [h('h4', null, d.label), where ? h('p', { class: 'mm-muted' }, where) : null, d.heat ? h('p', null, 'Heats the room it stands in.') : null] };
+      return { sig: `o${th.id}${where}${Math.round(th.fuel || 0)}${th.lit}`, build: () => [h('h4', null, d.label), where ? h('p', { class: 'mm-muted' }, where) : null,
+        d.fuelCap ? fuelLine(th) : null,
+        d.heat ? h('p', null, `${th.lit ? 'Burning' : th.fuel > 0 ? 'Idle while it is warm outside' : 'Out of fuel'}. Heats the room it stands in${d.always ? ', and burns all the time' : ' when it is cool outside'}.`) : null,
+        d.cook ? h('p', null, 'Colonists cook meals here while it has fuel: 2 raw food make 1 meal.') : null] };
     }
     if (sel.kind === 'world') return worldInspect(sel.what);
     return { sig: 'x', build: () => [] };
