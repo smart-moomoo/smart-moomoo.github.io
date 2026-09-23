@@ -74,6 +74,21 @@
 .mm-col small { color: var(--mm-muted); font-weight: 400; }
 .mm-col small.is-cold { color: #9fd3ff; }
 .mm-portrait { width: 15px; height: 21px; image-rendering: pixelated; }
+.mm-mood { display: inline-block; width: 7px; height: 7px; border: 1px solid var(--mm-ink); }
+.mm-mood.is-ok { background: #6fe07a; }
+.mm-mood.is-mid { background: #e0b64a; }
+.mm-mood.is-low, .mm-mood.is-sulk { background: #d8323c; }
+.mm-traits { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 6px !important; }
+.mm-trait { padding: 1px 6px; background: var(--mm-deep); border: 1px solid #5a5f66; font-size: 11px; color: var(--mm-text); cursor: help; }
+.mm-thoughts { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
+.mm-thoughts li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+.mm-thoughts li.is-neg b { color: #ff9a8a; }
+.mm-thoughts li.is-pos b { color: #8fe0b0; }
+.mm-picks { display: grid; gap: 6px; }
+.mm-pick { display: grid; gap: 3px; text-align: left; padding: 8px 10px; background: var(--mm-raise); color: var(--mm-text); border: 2px solid var(--mm-ink); font: 13px var(--sans); cursor: pointer; }
+.mm-pick:hover { background: #474d53; }
+.mm-pick.is-on { border-color: var(--mm-gold); background: #4d4630; }
+.mm-pick small { color: var(--mm-muted); }
 
 .mm-stage { position: relative; background: #000; line-height: 0; }
 .mm-canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; cursor: crosshair; touch-action: none; }

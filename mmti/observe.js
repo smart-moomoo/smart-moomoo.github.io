@@ -35,7 +35,7 @@ window.MMTI = window.MMTI || {};
         seek_info: 'The day before a talk, if your slides won’t open on the room’s computer, you tend to work out why before deciding whether to present another way.' } },
   ];
 
-  function fresh() { return { episodes: [], feedback: [], sceneSeed: Math.floor(Math.random() * 1e9) }; }
+  function fresh() { return { episodes: [], feedback: [], decisions: [], sceneSeed: Math.floor(Math.random() * 1e9) }; }
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
@@ -181,6 +181,12 @@ window.MMTI = window.MMTI || {};
       if (!ep) return;
       ep.outcome = outcome;
       if (ep.status === 'open') { ep.status = 'abandoned'; ep.abandonReason = outcome.reason || 'no decision'; }
+      save();
+    },
+    // Decisions not yet interpreted by any rule; kept raw so later rules can use them.
+    logDecision(kind, data, s) {
+      if (!store.decisions) store.decisions = [];
+      store.decisions.push({ kind, t: r2(s.t), at: new Date().toISOString(), ...data });
       save();
     },
     classify, unscoredReason, computeModel, portraitCards,

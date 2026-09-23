@@ -782,6 +782,20 @@
       g.fillStyle = '#fffefa';
       g.fillText(c.name, x, y);
     }
+    g.font = '7px sans-serif';
+    for (const b of s.chatter || []) {
+      const c = s.colonists.find((o) => o.id === b.cid);
+      if (!c || c.away) continue;
+      const w = Math.ceil(g.measureText(b.text).width) + 8;
+      let x = Math.round(c.x * TS) + 8 - w / 2;
+      x = Math.max(1, Math.min(CW - w - 1, x));
+      const y = Math.max(1, Math.round(c.y * TS) - 17);
+      R(g, x - 1, y - 1, w + 2, 12, INK);
+      R(g, x, y, w, 10, '#fffefa');
+      R(g, Math.round(c.x * TS) + 7, y + 10, 2, 2, INK);
+      g.fillStyle = INK;
+      g.fillText(b.text, x + w / 2, y + 8);
+    }
     g.textAlign = 'start';
 
     if (ui.hover && ui.tool) {
@@ -844,6 +858,7 @@
       case 'harvestCrop': return j.stage === 'walk' ? 'Going to harvest' : 'Harvesting potatoes';
       case 'pick': return j.stage === 'walk' ? 'Going to pick berries' : 'Picking berries';
       case 'sleep': return c.sleeping ? 'Sleeping' : 'Going to bed';
+      case 'sulk': return 'Sulking, refusing to work';
       case 'eat': return j.stage === 'work' ? 'Eating' : 'Going to eat';
       case 'build': return `${going ? 'Going to build' : 'Building'} ${th ? M.DEFS[th.type].label.toLowerCase() : ''}`.trim();
       case 'repair': return j.stage === 'walk' ? 'Going to repair the heater' : 'Repairing the heater';
@@ -856,7 +871,8 @@
 
   function updateBar() {
     const s = S();
-    const sig = s.colonists.map((c) => `${c.id}${c.away}${c.sleeping}${c.cold > 0.15}${ui.sel && ui.sel.kind === 'colonist' && ui.sel.id === c.id}`).join('|');
+    const moodClass = (c) => (c.breakUntil > s.t ? 'sulk' : c.mood < 25 ? 'low' : c.mood < 45 ? 'mid' : 'ok');
+    const sig = s.colonists.map((c) => `${c.id}${c.away}${c.sleeping}${c.cold > 0.15}${moodClass(c)}${ui.sel && ui.sel.kind === 'colonist' && ui.sel.id === c.id}`).join('|');
     if (sig === lastBarSig) return;
     lastBarSig = sig;
     el.bar.replaceChildren(...s.colonists.map((c) => {
@@ -869,7 +885,8 @@
       return h('button', {
         type: 'button', class: `mm-col${on ? ' is-on' : ''}${c.away ? ' is-away' : ''}`,
         on: { click: () => { if (c.away) setView('world'); else setView('map'); select({ kind: 'colonist', id: c.id }); } },
-      }, pic, h('span', null, c.name), c.away ? h('small', null, 'caravan') : c.sleeping ? h('small', null, 'asleep') : c.cold > 0.15 ? h('small', { class: 'is-cold' }, 'cold') : null);
+      }, pic, h('i', { class: `mm-mood is-${moodClass(c)}`, title: `Mood ${Math.round(c.mood)}` }), h('span', null, c.name),
+      c.breakUntil > s.t ? h('small', { class: 'is-cold' }, 'sulking') : c.away ? h('small', null, 'caravan') : c.sleeping ? h('small', null, 'asleep') : c.cold > 0.15 ? h('small', { class: 'is-cold' }, 'cold') : null);
     }));
   }
 
@@ -932,15 +949,21 @@
     if (sel.kind === 'colonist') {
       const c = s.colonists.find((o) => o.id === sel.id);
       if (!c) return { sig: 'gone', build: () => [] };
+      const ths = q.thoughts(c).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
       return {
-        sig: `c${c.id}${Math.round(c.food * 20)}${Math.round(c.rest * 20)}${Math.round(q.health(c) * 20)}${activity(c)}`,
+        sig: `c${c.id}${Math.round(c.food * 20)}${Math.round(c.rest * 20)}${Math.round(q.health(c) * 20)}${Math.round(c.mood / 4)}${activity(c)}${ths.map((t) => t.key + t.value).join()}`,
         build: () => {
           const conds = [];
           if (c.cold > 0.05) conds.push(`Hypothermia ${Math.round(c.cold * 100)}%`);
           if (c.weak > 0.05) conds.push(`Weakened ${Math.round(c.weak * 100)}%`);
+          const rels = q.relationsOf(c);
           return [h('h4', null, c.name), h('p', null, activity(c)),
+            h('p', { class: 'mm-traits' }, (c.traits || []).map((k) => h('span', { class: 'mm-trait', title: M.TRAITS[k].desc }, M.TRAITS[k].label))),
+            rels.length ? h('p', { class: 'mm-muted' }, rels.map((r) => `${M.REL_LABEL[r.kind]}: ${r.other.name}`).join(' · ')) : null,
+            needBar(`Mood`, c.mood / 100, c.mood < 25 ? '#d8323c' : c.mood < 45 ? '#e0b64a' : '#6fe07a'),
             needBar('Food', c.food, '#e0b64a'), needBar('Rest', c.rest, '#6a9bd0'), needBar('Health', q.health(c), '#6fe07a'),
-            conds.length ? h('p', { class: 'mm-warn' }, conds.join(' · ')) : null];
+            conds.length ? h('p', { class: 'mm-warn' }, conds.join(' · ')) : null,
+            ths.length ? h('ul', { class: 'mm-thoughts' }, ths.slice(0, 6).map((t) => h('li', { class: t.value < 0 ? 'is-neg' : 'is-pos' }, h('span', null, t.label), h('b', null, `${t.value > 0 ? '+' : ''}${t.value}`)))) : null];
         },
       };
     }
@@ -1161,6 +1184,7 @@
     else if (m.kind === 'evidence') node = evidenceModal();
     else if (m.kind === 'propose') node = proposeModal();
     else if (m.kind === 'menu') node = menuModal();
+    else if (m.kind === 'caravan') node = caravanModal(m.arg);
     el.modal.replaceChildren(node);
     el.modal.hidden = false;
   }
@@ -1177,10 +1201,9 @@
     const actions = (l.actions || []).map((a) => {
       let label = a.label;
       if (a.cmd.type === 'caravan-send') {
-        const names = q.caravanCandidates().map((c) => c.name);
-        label = names.length >= 2 ? `Send ${names.join(' and ')}` : 'Not enough healthy colonists';
+        return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', disabled: q.eligibleForCaravan().length < 2, on: { click: () => openModal('caravan', { letterId: l.id, picked: [] }) } }, 'Choose who goes');
       }
-      return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', on: { click: () => { const r = order(a.cmd); if (r.ok) { closeModal(); if (a.cmd.type === 'caravan-send') { setView('world'); select({ kind: 'world', what: 'caravan' }); } } } } }, label);
+      return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', on: { click: () => { const r = order(a.cmd); if (r.ok) closeModal(); } } }, label);
     });
     const jump = l.focus ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { closeModal(); focusOn(l.focus); } } }, l.focus.world ? 'Show on world map' : 'Show') : null;
     return modalFrame(l.title,
@@ -1189,6 +1212,31 @@
       h('div', { class: 'mm-actions' }, actions, jump,
         !l.actions ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.command({ type: 'dismiss-letter', id: l.id }); lastLetterSig = ''; closeModal(); } } }, 'Dismiss') : null));
   }
+  function caravanModal(arg) {
+    const inc = S().incident;
+    const picked = arg.picked;
+    const rows = q.eligibleForCaravan().map((c) => {
+      const on = picked.includes(c.id);
+      const rels = q.relationsOf(c);
+      return h('button', {
+        type: 'button', class: `mm-pick${on ? ' is-on' : ''}`, 'aria-pressed': String(on),
+        on: { click: () => { const i = picked.indexOf(c.id); if (i >= 0) picked.splice(i, 1); else if (picked.length < 2) picked.push(c.id); renderModal(); } },
+      },
+      h('strong', null, c.name),
+      h('span', { class: 'mm-traits' }, (c.traits || []).map((k) => h('span', { class: 'mm-trait', title: M.TRAITS[k].desc }, M.TRAITS[k].label))),
+      h('small', null, `Mood ${Math.round(c.mood)} · first choice: ${M.WORK_TYPES.filter((w) => c.prio[w] === 1).map((w) => WORK_LABEL[w].toLowerCase()).join(', ') || 'nothing in particular'}${rels.length ? ` · ${rels.map((r) => `${M.REL_LABEL[r.kind].toLowerCase()} of ${r.other.name}`).join(', ')}` : ''}`));
+    });
+    return modalFrame('Form a caravan',
+      h('p', null, inc && inc.kind === 'caravan' ? `Choose two colonists to go after ${inc.traveler.name}. They will be away for most of a day and do no work at home.` : 'The request is gone.'),
+      h('div', { class: 'mm-picks' }, rows),
+      h('div', { class: 'mm-actions' },
+        h('button', { type: 'button', class: 'mm-btn mm-btn-primary', disabled: picked.length !== 2, on: { click: () => {
+          const r = order({ type: 'caravan-send', members: picked.slice() });
+          if (r.ok) { closeModal(); setView('world'); select({ kind: 'world', what: 'caravan' }); }
+        } } }, picked.length === 2 ? 'Send them' : `Pick ${2 - picked.length} more`),
+        h('button', { type: 'button', class: 'mm-btn', on: { click: () => openLetter(arg.letterId) } }, 'Back')));
+  }
+
   function focusOn(f) {
     if (f.world) { setView('world'); select({ kind: 'world', what: f.world }); return; }
     setView('map');

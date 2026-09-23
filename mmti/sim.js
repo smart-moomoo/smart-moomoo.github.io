@@ -62,17 +62,30 @@ window.MMTI = window.MMTI || {};
   const ROUTES = { start: ['C', 'R1', 'R2'], road: ['R2', 'R3', 'X'], pass: ['R2', 'P1', 'P2', 'P3', 'X'] };
 
   const PEOPLE = [
-    { name: 'Mara', shirt: '#c0533a', hair: '#3b2a20', skills: { build: 1.3, repair: 1, plants: 0.9, cook: 0.9 }, prio: { build: 1, repair: 2, cook: 3, grow: 3, chop: 2, haul: 3 } },
-    { name: 'Tobin', shirt: '#3d6f9e', hair: '#d9a441', skills: { build: 0.9, repair: 0.8, plants: 1.3, cook: 1 }, prio: { build: 3, repair: 3, cook: 3, grow: 1, chop: 2, haul: 2 } },
-    { name: 'Ines', shirt: '#7a5aa0', hair: '#1c1c1c', skills: { build: 1, repair: 1.3, plants: 1, cook: 1.3 }, prio: { build: 2, repair: 1, cook: 1, grow: 3, chop: 3, haul: 2 } },
+    { name: 'Mara', traits: ['hardworker', 'coldhater'], shirt: '#c0533a', hair: '#3b2a20', skills: { build: 1.3, repair: 1, plants: 0.9, cook: 0.9 }, prio: { build: 1, repair: 2, cook: 3, grow: 3, chop: 2, haul: 3 } },
+    { name: 'Tobin', traits: ['greenthumb', 'homebody'], shirt: '#3d6f9e', hair: '#d9a441', skills: { build: 0.9, repair: 0.8, plants: 1.3, cook: 1 }, prio: { build: 3, repair: 3, cook: 3, grow: 1, chop: 2, haul: 2 } },
+    { name: 'Ines', traits: ['sensitive', 'kind'], shirt: '#7a5aa0', hair: '#1c1c1c', skills: { build: 1, repair: 1.3, plants: 1, cook: 1.3 }, prio: { build: 2, repair: 1, cook: 1, grow: 3, chop: 3, haul: 2 } },
   ];
   const TRAVELERS = [
-    { name: 'Dusk', role: 'trader', shirt: '#5b8a3a', hair: '#8a5a3c' },
-    { name: 'Ansel', role: 'medic', shirt: '#e0e0d8', hair: '#6b4a2b' },
-    { name: 'Kit', role: 'surveyor', shirt: '#c99a2e', hair: '#2a2018' },
-    { name: 'Bo', role: 'young herder', shirt: '#8f3f6a', hair: '#b5543c' },
-    { name: 'Rhea', role: 'smith', shirt: '#4a5a6a', hair: '#e8d8b0' },
+    { name: 'Dusk', role: 'trader', traits: ['wanderer', 'gourmand'], shirt: '#5b8a3a', hair: '#8a5a3c' },
+    { name: 'Ansel', role: 'medic', traits: ['kind', 'hardy'], shirt: '#e0e0d8', hair: '#6b4a2b' },
+    { name: 'Kit', role: 'surveyor', traits: ['wanderer', 'lazy'], shirt: '#c99a2e', hair: '#2a2018' },
+    { name: 'Bo', role: 'young herder', traits: ['sensitive', 'greenthumb'], shirt: '#8f3f6a', hair: '#b5543c' },
+    { name: 'Rhea', role: 'smith', traits: ['hardworker', 'hardy'], shirt: '#4a5a6a', hair: '#e8d8b0' },
   ];
+  const TRAITS = {
+    hardworker: { label: 'Hard worker', desc: 'Works 20% faster.' },
+    lazy: { label: 'Lazy', desc: 'Works 20% slower, but is easily content.' },
+    greenthumb: { label: 'Green thumb', desc: 'Plants, harvests, picks, and chops 40% faster.' },
+    hardy: { label: 'Hardy', desc: 'Gets hypothermia half as fast.' },
+    coldhater: { label: 'Hates the cold', desc: 'Unhappy whenever it is below 12°C around them.' },
+    gourmand: { label: 'Gourmand', desc: 'Loves cooked meals and hates raw food.' },
+    homebody: { label: 'Homebody', desc: 'Unhappy away from the colony.' },
+    wanderer: { label: 'Wanderer', desc: 'Happy on the road; restless after days at home.' },
+    sensitive: { label: 'Sensitive', desc: 'Good and bad memories hit twice as hard.' },
+    kind: { label: 'Kind', desc: 'Hates turning people away; cheers up whoever works near them.' },
+  };
+  const REL_LABEL = { partner: 'Partner', sibling: 'Sibling', friend: 'Friend', rival: 'Rival' };
 
   const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -133,7 +146,8 @@ window.MMTI = window.MMTI || {};
 
   function makeColonist(s, p, x, y) {
     return {
-      id: s.nextId++, name: p.name, shirt: p.shirt, hair: p.hair,
+      id: s.nextId++, name: p.name, shirt: p.shirt, hair: p.hair, traits: (p.traits || []).slice(),
+      mood: 55, memories: [], breakUntil: 0,
       x, y, path: [], job: null, duty: null, carry: null,
       food: 0.8, rest: 0.9, cold: 0, weak: 0,
       skills: { build: 1, repair: 1, plants: 1, cook: 1, ...(p.skills || {}) },
@@ -152,7 +166,7 @@ window.MMTI = window.MMTI || {};
       weather: { override: null, label: null, until: null },
       incident: null, caravan: null, letters: [],
       story: { nextAt: START_T + 7, counts: {}, travelers: 0 },
-      roomTemps: [], lastDay: dayIndex(START_T), warn: {},
+      roomTemps: [], lastDay: dayIndex(START_T), warn: {}, relations: [], chatter: [], nextChat: START_T + 0.5,
     };
     const set = (x, y, t) => { if (inb(x, y)) s.terrain[idx(x, y)] = t; };
 
@@ -217,6 +231,7 @@ window.MMTI = window.MMTI || {};
     }
 
     s.colonists.push(makeColonist(s, PEOPLE[0], 15, 12), makeColonist(s, PEOPLE[1], 16, 13), makeColonist(s, PEOPLE[2], 14, 13));
+    defaultRelations(s);
     letter(s, {
       kind: 'info', title: 'Welcome to the colony',
       body: 'Mara, Tobin, and Ines have a heated bedroom, a campfire for cooking, a field ready to plant, and a stockpile with some wood and potatoes.\n\n'
@@ -226,10 +241,108 @@ window.MMTI = window.MMTI || {};
         + '• Orders: mark trees to chop and berry bushes to pick.\n'
         + '• Fires and heaters burn wood. Food spoils, more slowly indoors and in the cold.\n'
         + '• Winter comes in 12 days: crops stop growing and the heater burns wood day and night.\n'
+        + '• Each colonist has two traits and people they care about. Their mood rises and falls with how they are treated; a miserable colonist may stop working for a while.\n'
         + '• Space pauses. Keys 1, 2, 3 change speed.\n\n'
         + 'Things will go wrong. Handle them however you like. The Archivist, in the small hut, will tell you what she has noticed about you.',
     });
     return s;
+  }
+
+  function defaultRelations(s) {
+    const by = (n) => s.colonists.find((c) => c.name === n);
+    const [m, t, i] = [by('Mara'), by('Tobin'), by('Ines')];
+    s.relations = [];
+    if (m && t) s.relations.push({ a: m.id, b: t.id, kind: 'sibling' });
+    if (t && i) s.relations.push({ a: t.id, b: i.id, kind: 'partner' });
+  }
+
+  // ---------- people: traits, relationships, memories, mood ----------
+  const has = (c, trait) => !!(c.traits && c.traits.includes(trait));
+  function relationsOf(s, c) {
+    return (s.relations || [])
+      .filter((r) => r.a === c.id || r.b === c.id)
+      .map((r) => ({ kind: r.kind, other: s.colonists.find((o) => o.id === (r.a === c.id ? r.b : r.a)) }))
+      .filter((r) => r.other);
+  }
+  function addMemory(s, c, key, label, value, hours) {
+    c.memories = (c.memories || []).filter((m) => m.key !== key);
+    c.memories.push({ key, label, value: has(c, 'sensitive') ? value * 2 : value, until: s.t + hours });
+  }
+  function sameRoom(a, b) {
+    const ra = roomAt(Math.round(a.x), Math.round(a.y)), rb = roomAt(Math.round(b.x), Math.round(b.y));
+    return !!ra && ra === rb && !ra.outdoors;
+  }
+  function thoughts(s, c) {
+    const out = [];
+    const add = (key, label, value, who) => out.push({ key, label, value, who });
+    const [x, y] = tileOf(c);
+    const temp = c.away ? outdoorTemp(s) : tempAt(s, x, y);
+    if (c.food < 0.1) add('starving', 'Starving', -18);
+    else if (c.food < 0.25) add('hungry', 'Hungry', -6);
+    if (c.rest < 0.15) add('exhausted', 'Exhausted', -8);
+    if (c.cold > 0.2) add('hypothermia', 'Hypothermia', -10);
+    if (c.weak > 0.3) add('weak', 'Weak and sore', -6);
+    if (has(c, 'coldhater') && temp < 12) add('cold', 'Hates this cold', -8);
+    if (c.away) {
+      if (has(c, 'homebody')) add('farhome', 'Far from home', -10);
+      if (has(c, 'wanderer')) add('road', 'On the road', 8);
+    } else if (has(c, 'wanderer') && s.t - (c.lastTripT != null ? c.lastTripT : START_T - 48) > 96) add('restless', 'Restless at home', -5);
+    if (has(c, 'lazy')) add('easy', 'Takes it easy', 6);
+    for (const r of relationsOf(s, c)) {
+      const o = r.other;
+      if (r.kind === 'partner' || r.kind === 'sibling') {
+        const w = r.kind === 'partner' ? 1 : 0.6;
+        if (o.away && !c.away) add('misses', `Misses ${o.name}`, Math.round(-8 * w), o.name);
+        if (health(o) < 0.6 || o.food < 0.1) add('worried', `Worried about ${o.name}`, Math.round(-10 * w), o.name);
+        if (r.kind === 'partner' && !c.away && !o.away && c.sleeping && o.sleeping && sameRoom(c, o)) add('near', `Sleeping near ${o.name}`, 4, o.name);
+      }
+      if (r.kind === 'rival' && !c.away && !o.away && sameRoom(c, o)) add('rival', `Stuck with ${o.name}`, -4, o.name);
+    }
+    if (!c.away && s.colonists.some((o) => o !== c && !o.away && has(o, 'kind') && Math.hypot(o.x - c.x, o.y - c.y) < 4)) add('kindco', 'Kind company', 3);
+    for (const m of c.memories || []) if (m.until > s.t) add(m.key, m.label, m.value);
+    return out;
+  }
+  function moodStep(s, c, dt) {
+    c.memories = (c.memories || []).filter((m) => m.until > s.t);
+    const sum = thoughts(s, c).reduce((a, t) => a + t.value, 0);
+    const target = Math.max(0, Math.min(100, 50 + sum));
+    c.mood += (target - c.mood) * (1 - Math.exp(-dt / 2));
+    if (c.away || c.breakUntil > s.t) return;
+    if (c.mood < 20 && s.t >= (c.breakCheck || 0)) {
+      c.breakCheck = s.t + 1;
+      if (Math.random() < 0.25) {
+        c.breakUntil = s.t + 3;
+        endJob(s, c);
+        const worst = thoughts(s, c).filter((t) => t.value < 0).sort((a, b) => a.value - b.value).slice(0, 2).map((t) => t.label.toLowerCase());
+        letter(s, { kind: 'threat', title: `${c.name} is sulking`, body: `${c.name} has had enough and stopped working for a few hours.${worst.length ? ` What is getting to them: ${worst.join(' and ')}.` : ''}`, focus: { colonistId: c.id } });
+        addMemory(s, c, 'vented', 'Let it all out', 6, 12);
+      }
+    }
+  }
+
+  const CHAT = {
+    cold: () => 'Why is it always this cold?', hungry: () => 'When do we eat?', starving: () => 'I can’t keep going like this.',
+    exhausted: () => 'I need to sleep.', hypothermia: () => 'I can’t feel my fingers.', weak: () => 'Everything aches.',
+    misses: (t) => `I hope ${t.who} is safe out there.`, worried: (t) => `${t.who}, hang in there.`, near: (t) => `Night, ${t.who}.`,
+    rival: (t) => `Of course ${t.who} is here.`, farhome: () => 'I want to go home.', road: () => 'Nothing like the open road.',
+    restless: () => 'Same walls, same fields…', easy: () => 'No rush.', kindco: () => 'Thanks for the help.',
+    rawfood: () => 'Raw potatoes again…', goodmeal: () => 'That was a good meal.', notable: () => 'Eating off my knees again.',
+    froze: () => 'I couldn’t feel my feet last night.', coldnight: () => 'That was a cold night.', slept: () => 'Slept well.',
+    ground: () => 'My back hurts from the ground.', rescued: () => 'I owe you all.', rescuer: () => 'We made it in time.',
+    toolate: () => 'We were too late.', turnedaway: () => 'We should have helped them.', gaveup: () => 'We left them out there.',
+    vented: () => 'Sorry. I needed that.', welcomed: () => 'Good to have another pair of hands.',
+  };
+  function chatterStep(s) {
+    s.chatter = (s.chatter || []).filter((b) => b.until > s.t);
+    if (s.t < (s.nextChat || 0)) return;
+    s.nextChat = s.t + rand(0.8, 2);
+    const pool = s.colonists.filter((c) => !c.away && !c.sleeping);
+    if (!pool.length) return;
+    const c = pick(pool);
+    const ts = thoughts(s, c).filter((t) => CHAT[t.key]).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    if (!ts.length) return;
+    const t = ts[Math.floor(Math.random() * Math.min(2, ts.length))];
+    s.chatter.push({ cid: c.id, text: CHAT[t.key](t), until: s.t + 0.35 });
   }
 
   // ---------- indexes, rooms, temperature ----------
@@ -457,7 +570,8 @@ window.MMTI = window.MMTI || {};
 
   const tileOf = (c) => [Math.round(c.x), Math.round(c.y)];
   const health = (c) => 1 - Math.min(0.85, 0.9 * c.cold + 0.9 * c.weak);
-  const workFactor = (c) => 0.35 + 0.65 * health(c);
+  const workFactor = (c) => (0.35 + 0.65 * health(c)) * (has(c, 'hardworker') ? 1.2 : has(c, 'lazy') ? 0.8 : 1) * (c.mood < 25 ? 0.75 : c.mood > 70 ? 1.1 : 1);
+  const plantSkill = (c) => c.skills.plants * (has(c, 'greenthumb') ? 1.4 : 1);
 
   function moveAlong(c, dt) {
     let budget = WALK * (0.5 + 0.5 * health(c)) * dt;
@@ -644,6 +758,16 @@ window.MMTI = window.MMTI || {};
       const j = bed && goJob(s, c, 'sleep', [{ id: bed.id, x: bed.x, y: bed.y, exact: true }]);
       return j || { kind: 'sleep', targetId: null, stage: 'work', work: 0 };
     }
+    if (c.breakUntil > s.t) {
+      const [bx, by] = tileOf(c);
+      for (let n = 0; n < 6; n++) {
+        const x = bx + Math.round(rand(-4, 4)), y = by + Math.round(rand(-4, 4));
+        if (!inb(x, y) || blocked[idx(x, y)]) continue;
+        const j = goJob(s, c, 'sulk', [{ x, y, exact: true }]);
+        if (j) return j;
+      }
+      return { kind: 'sulk', targetId: null, stage: 'work', work: 0 };
+    }
     if (c.duty) {
       const th = byId.get(c.duty.targetId);
       const j = th && goJob(s, c, c.duty.kind, [th]);
@@ -683,7 +807,8 @@ window.MMTI = window.MMTI || {};
     } else if (j.kind === 'eat') {
       const tables = s.things.filter((th) => th.type === 'table' && !th.bp);
       const t = pathTo(from, tables);
-      res = t && t.path.length < 15 ? t : { path: [] };
+      j.atTable = !!(t && t.path.length < 15);
+      res = j.atTable ? t : { path: [] };
     } else {
       const th = byId.get(j.targetId);
       if (th) res = pathTo(from, [th]);
@@ -707,22 +832,39 @@ window.MMTI = window.MMTI || {};
     const wf = workFactor(c);
     switch (j.kind) {
       case 'wander':
+      case 'sulk':
         j.work += dt;
         if (j.work >= 0.4) endJob(s, c);
         return;
       case 'eat':
         j.work += dt;
         if (j.work >= 0.4) {
-          if (c.carry) c.food = Math.min(1, c.food + c.carry.n * ITEMS[c.carry.kind].food);
+          if (c.carry) {
+            c.food = Math.min(1, c.food + c.carry.n * ITEMS[c.carry.kind].food);
+            if (c.carry.kind === 'meal') {
+              if (j.atTable) addMemory(s, c, 'goodmeal', 'Ate a good meal', has(c, 'gourmand') ? 8 : 4, 10);
+              else addMemory(s, c, 'notable', 'Ate without a table', -3, 10);
+            } else addMemory(s, c, 'rawfood', 'Ate raw food', has(c, 'gourmand') ? -10 : -3, 10);
+          }
           c.carry = null;
           endJob(s, c);
         }
         return;
-      case 'sleep':
+      case 'sleep': {
         c.sleeping = true;
         c.rest = Math.min(1, c.rest + dt / 7);
-        if ((!isNight(s) && c.rest >= 0.9) || c.food < 0.12) endJob(s, c);
+        const [bx, by] = tileOf(c);
+        j.minTemp = Math.min(j.minTemp == null ? 99 : j.minTemp, tempAt(s, bx, by));
+        if ((!isNight(s) && c.rest >= 0.9) || c.food < 0.12) {
+          const bed = structAt[idx(bx, by)];
+          if (j.minTemp < 0) addMemory(s, c, 'froze', 'Froze in bed', -12, 24);
+          else if (j.minTemp < 10) addMemory(s, c, 'coldnight', 'Slept in the cold', -5, 12);
+          else if (bed && bed.type === 'bed') addMemory(s, c, 'slept', 'Slept well', 3, 12);
+          if (!bed || bed.type !== 'bed') addMemory(s, c, 'ground', 'Slept on the ground', -6, 12);
+          endJob(s, c);
+        }
         return;
+      }
       case 'deliver':
         if (th && th.bp && c.carry) {
           const need = DEFS[th.type].cost - (th.delivered || 0);
@@ -800,14 +942,14 @@ window.MMTI = window.MMTI || {};
       case 'sow': {
         const p = s.zones.grow[j.tile];
         if (!p || p.sown) return endJob(s, c);
-        j.work += dt * c.skills.plants * wf;
+        j.work += dt * plantSkill(c) * wf;
         if (j.work >= 0.3) { p.sown = true; p.growth = 0; endJob(s, c); }
         return;
       }
       case 'harvestCrop': {
         const p = s.zones.grow[j.tile];
         if (!p || !p.sown || p.growth < 1) return endJob(s, c);
-        j.work += dt * c.skills.plants * wf;
+        j.work += dt * plantSkill(c) * wf;
         if (j.work >= 0.4) {
           p.sown = false;
           p.growth = 0;
@@ -818,7 +960,7 @@ window.MMTI = window.MMTI || {};
       }
       case 'pick':
         if (!th || !th.berries || th.des !== 'harvest') return endJob(s, c);
-        th.progress = (th.progress || 0) + dt * c.skills.plants * wf;
+        th.progress = (th.progress || 0) + dt * plantSkill(c) * wf;
         if (th.progress >= 0.6) {
           th.berries = false;
           th.progress = 0;
@@ -829,7 +971,7 @@ window.MMTI = window.MMTI || {};
         return;
       case 'chop':
         if (!th || th.des !== 'chop') return endJob(s, c);
-        th.progress = (th.progress || 0) + dt * c.skills.plants * wf;
+        th.progress = (th.progress || 0) + dt * plantSkill(c) * wf;
         if (th.progress >= 1.2) {
           const wood = Math.max(1, Math.round(10 * (th.growth == null ? 1 : th.growth)));
           s.things.splice(s.things.indexOf(th), 1);
@@ -855,7 +997,7 @@ window.MMTI = window.MMTI || {};
     const [x, y] = tileOf(c);
     const temp = tempAt(s, x, y);
     // Awake colonists are dressed for the season; asleep in a freezing room they are not.
-    if ((c.sleeping && temp < 0) || temp < -12) c.cold = Math.min(1, c.cold + dt * 0.14 * Math.min(3, (5 - temp) / 5));
+    if ((c.sleeping && temp < 0) || temp < -12) c.cold = Math.min(1, c.cold + dt * (has(c, 'hardy') ? 0.07 : 0.14) * Math.min(3, (5 - temp) / 5));
     else c.cold = Math.max(0, c.cold - dt * (temp > 12 ? 0.05 : 0.02));
     if (c.food <= 0) c.weak = Math.min(1, c.weak + dt * 0.02);
     else c.weak = Math.max(0, c.weak - dt * 0.02);
@@ -869,6 +1011,7 @@ window.MMTI = window.MMTI || {};
       letter(s, { kind: 'threat', title: `${c.name} is starving`, body: `${c.name} has nothing to eat and is getting weaker.`, focus: { colonistId: c.id } });
     }
     if (c.food > 0.3) c.hungerWarned = false;
+    moodStep(s, c, dt);
     if (!c.job) { c.job = assignJob(s, c); if (c.job) delete c.job._tg; }
     runJob(s, c, dt);
   }
@@ -1152,6 +1295,10 @@ window.MMTI = window.MMTI || {};
   function arrive(s, inc, cv) {
     const late = inc.deadlineT != null && s.t > inc.deadlineT;
     inc.late = late;
+    for (const id of cv.members) {
+      const c = s.colonists.find((o) => o.id === id);
+      if (c) addMemory(s, c, late ? 'toolate' : 'rescuer', late ? `Too late for ${inc.traveler.name}` : `Reached ${inc.traveler.name} in time`, late ? -8 : 8, 48);
+    }
     obs('episodeEnd', inc, { how: 'arrived', arrivedAt: r2(s.t), late, route: inc.cleared ? 'road' : 'pass' });
     letter(s, late
       ? { kind: 'threat', title: `Reached ${inc.traveler.name}, late`, body: `The caravan reached ${inc.traveler.name} after the water ran out. They are badly dehydrated and will need rest. Everyone is heading home.` }
@@ -1170,11 +1317,17 @@ window.MMTI = window.MMTI || {};
       [c.x, c.y] = edge[n % edge.length];
       endJob(s, c);
     });
-    if (!inc.failed) {
+    if (inc.failed) {
+      for (const id of cv.members) { const c = s.colonists.find((o) => o.id === id); if (c) addMemory(s, c, 'gaveup', `Gave up on ${inc.traveler.name}`, -10, 48); }
+    } else {
       if (s.colonists.length < MAX_COLONISTS) {
         const t = inc.traveler;
-        const c = makeColonist(s, { name: t.name, shirt: t.shirt, hair: t.hair }, W - 2, 13);
+        const c = makeColonist(s, { name: t.name, shirt: t.shirt, hair: t.hair, traits: t.traits }, W - 2, 13);
         c.weak = inc.late ? 0.6 : 0.1;
+        c.lastTripT = s.t;
+        addMemory(s, c, 'rescued', 'Rescued by the colony', inc.late ? 6 : 12, 96);
+        for (const id of cv.members) s.relations.push({ a: c.id, b: id, kind: 'friend' });
+        for (const o of s.colonists) if (!cv.members.includes(o.id)) addMemory(s, o, 'welcomed', `${t.name} joined us`, 3, 24);
         s.colonists.push(c);
         letter(s, { kind: 'good', title: `${t.name} joined the colony`, body: `${t.name} decided to stay${inc.late ? ' once they recover' : ''}. Another pair of hands, and another mouth to feed.`, focus: { colonistId: c.id } });
       } else {
@@ -1188,6 +1341,7 @@ window.MMTI = window.MMTI || {};
   }
 
   function declineCaravan(s, inc, expired) {
+    for (const c of home(s)) addMemory(s, c, 'turnedaway', expired ? `Ignored ${inc.traveler.name}’s call for help` : `Turned ${inc.traveler.name} away`, has(c, 'kind') ? -10 : -3, 48);
     letter(s, { kind: 'info', title: expired ? 'The request expired' : 'Request declined', body: `${inc.traveler.name} will have to manage without the colony.` });
     s.incident = null;
     s.story.nextAt = s.t + rand(6, 10);
@@ -1206,6 +1360,7 @@ window.MMTI = window.MMTI || {};
       roomTemp: r && !r.outdoors ? r2(r.temp) : null,
       home: home(s).length, deadlineIn: inc.deadlineT != null ? r2(inc.deadlineT - s.t) : null,
       reportIn: !!inc.reportIn,
+      people: s.colonists.map((c) => ({ name: c.name, traits: c.traits, mood: Math.round(c.mood), away: c.away })),
     };
   }
 
@@ -1342,9 +1497,19 @@ window.MMTI = window.MMTI || {};
       }
       case 'caravan-send': {
         if (!inc || inc.kind !== 'caravan' || inc.stage !== 'request') return fail();
-        const members = caravanCandidates(s);
-        if (members.length < 2) return fail('Not enough healthy colonists at home');
-        for (const c of members) { endJob(s, c); c.duty = null; c.away = true; }
+        const eligible = home(s).filter((c) => health(c) > 0.5);
+        const members = Array.isArray(cmd.members)
+          ? [...new Set(cmd.members)].map((id) => eligible.find((c) => c.id === id)).filter(Boolean)
+          : caravanCandidates(s);
+        if (members.length !== 2) return fail('Choose two healthy colonists who are at home');
+        if (M.observe && M.observe.logDecision) {
+          M.observe.logDecision('caravan-members', {
+            incidentId: inc.id, deadlineKind: inc.deadlineKind, traveler: inc.traveler.name,
+            chosen: members.map((c) => c.name),
+            candidates: eligible.map((c) => ({ name: c.name, traits: c.traits, mood: Math.round(c.mood), health: r2(health(c)), relations: relationsOf(s, c).map((r) => `${r.kind}:${r.other.name}`) })),
+          }, s);
+        }
+        for (const c of members) { endJob(s, c); c.duty = null; c.away = true; c.lastTripT = s.t; }
         s.caravan = { members: members.map((c) => c.id), route: ROUTES.start.slice(), seg: 0, prog: 0, status: 'outbound', clear: 0 };
         inc.stage = 'travel';
         for (const l of s.letters) if (l.forIncident === inc.id) { delete l.actions; l.read = true; }
@@ -1395,6 +1560,7 @@ window.MMTI = window.MMTI || {};
     spoilItems(s, dt);
     dailyTick(s);
     warnings(s);
+    chatterStep(s);
     const inc = s.incident;
     if (inc) {
       if (inc.kind === 'heating') heatingTick(s, inc);
@@ -1412,6 +1578,14 @@ window.MMTI = window.MMTI || {};
     for (const th of s.things) { th.res = null; th.resF = null; th.resD = null; }
     for (const it of s.items) it.res = null;
     reindex(s);
+    const known = [...PEOPLE, ...TRAVELERS];
+    for (const c of s.colonists) {
+      if (!c.traits) { const p = known.find((k) => k.name === c.name); c.traits = p && p.traits ? p.traits.slice() : []; }
+      if (c.mood == null) c.mood = 55;
+      if (!c.memories) c.memories = [];
+    }
+    if (!s.relations) defaultRelations(s);
+    if (!s.chatter) s.chatter = [];
     for (const c of s.colonists) {
       c.x = Math.round(c.x);
       c.y = Math.round(c.y);
@@ -1427,7 +1601,7 @@ window.MMTI = window.MMTI || {};
 
   // ---------- public API ----------
   Object.assign(M, {
-    W, H, T, DEFS, ITEMS, BUILDABLE, WORK_TYPES, WORLD, ROUTES, HEATER_CAUSES, BLOCK_CAUSES, CLEAR_HOURS, RETURN_HOURS, CROP_HOURS,
+    W, H, T, DEFS, ITEMS, TRAITS, REL_LABEL, BUILDABLE, WORK_TYPES, WORLD, ROUTES, HEATER_CAUSES, BLOCK_CAUSES, CLEAR_HOURS, RETURN_HOURS, CROP_HOURS,
     advance(hours) {
       let left = hours;
       while (left > 1e-9) { const dt = Math.min(STEP, left); step(S, dt); left -= dt; }
@@ -1461,6 +1635,9 @@ window.MMTI = window.MMTI || {};
       health, isNight: () => isNight(S),
       canBuild: (kind, x, y) => inb(x, y) && BUILDABLE.includes(kind) && S.terrain[idx(x, y)] !== T.WATER && !structAt[idx(x, y)] && !S.zones.grow[idx(x, y)],
       caravanCandidates: () => caravanCandidates(S),
+      eligibleForCaravan: () => home(S).filter((c) => health(c) > 0.5),
+      thoughts: (c) => thoughts(S, c),
+      relationsOf: (c) => relationsOf(S, c),
       spoilFactor: (x, y) => { const t = tempAt(S, x, y), r = roomAt(x, y); return t < 0 ? 0 : r && !r.outdoors ? (t < 10 ? 0.4 : 1) : 1.5; },
       segHours,
     },
