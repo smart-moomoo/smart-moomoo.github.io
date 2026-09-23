@@ -378,10 +378,11 @@
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('work') } }, 'Work'),
       el.researchBtn = h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('research') } }, 'Research'),
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('reflect') } }, 'Archivist'),
+      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('chronicle') } }, 'Chronicle'),
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('evidence') } }, 'Evidence'),
       h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('propose') } }, 'Propose')),
     el.tip);
-  let toolSig = '';
+  let toolSig = null;
   function renderToolRows() {
     const sig = S().research.done.join();
     if (sig === toolSig) return;
@@ -540,6 +541,19 @@
     if (!b) return WN[a];
     return lerp(WN[a], WN[b], Math.min(1, cv.prog / q.segHours(a, b)));
   }
+  function tradePos() {
+    const tr = S().trade;
+    if (!tr) return null;
+    const legs = [['C', 'R1'], ['R1', 'MB']];
+    let t = tr.prog;
+    const seq = tr.status === 'outbound' ? legs : legs.slice().reverse().map(([a, b]) => [b, a]);
+    for (const [a, b] of seq) {
+      const hrs = q.segHours(a, b);
+      if (t <= hrs) return lerp(WN[a], WN[b], t / hrs);
+      t -= hrs;
+    }
+    return tr.status === 'outbound' ? WN.MB : WN.C;
+  }
   function distToRoute(nodes, x, y) {
     let best = Infinity;
     for (let i = 0; i < nodes.length - 1; i++) {
@@ -550,7 +564,9 @@
     }
     return best;
   }
-  function clickWorld(p) {
+  const WSX = 768 / CW, WSY = 480 / CH;
+  function clickWorld(raw) {
+    const p = { lx: raw.lx * WSX, ly: raw.ly * WSY };
     const inc = S().incident;
     const hits = [];
     const cp = caravanPos();
@@ -560,6 +576,9 @@
       hits.push(['blockage', Math.hypot(bx - p.lx, by - p.ly)]);
     }
     hits.push(['camp', Math.hypot(WN.X[0] - p.lx, WN.X[1] - p.ly)]);
+    hits.push(['millbrook', Math.hypot(WN.MB[0] - p.lx, WN.MB[1] - p.ly)]);
+    const tp = tradePos();
+    if (tp) hits.push(['trade', Math.hypot(tp[0] - p.lx, tp[1] - p.ly) - 2]);
     hits.push(['colony', Math.hypot(WN.C[0] - p.lx, WN.C[1] - p.ly)]);
     hits.push(['pass', distToRoute(M.ROUTES.pass, p.lx, p.ly) + 6]);
     hits.push(['road', distToRoute(M.ROUTES.road, p.lx, p.ly) + 8]);
@@ -571,13 +590,13 @@
   let worldBg = null;
   function buildWorldBg() {
     const c = document.createElement('canvas');
-    c.width = CW;
-    c.height = CH;
+    c.width = 768;
+    c.height = 480;
     const g = c.getContext('2d');
-    for (let y = 0; y < CH; y += 8) for (let x = 0; x < CW; x += 8) R(g, x, y, 8, 8, ((x + y) / 8) % 2 ? '#7aa257' : '#82ab5e');
-    for (let y = 0; y < CH; y += 4) for (let x = 0; x < CW; x += 4) if (hash(x, y, 5) < 0.05) R(g, x, y, 2, 2, '#6c9449');
+    for (let y = 0; y < 480; y += 8) for (let x = 0; x < 768; x += 8) R(g, x, y, 8, 8, ((x + y) / 8) % 2 ? '#7aa257' : '#82ab5e');
+    for (let y = 0; y < 480; y += 4) for (let x = 0; x < 768; x += 4) if (hash(x, y, 5) < 0.05) R(g, x, y, 2, 2, '#6c9449');
     const river = (y) => 404 + Math.sin(y / 60) * 18;
-    for (let y = 0; y < CH; y += 2) { const x = river(y); R(g, x - 6, y, 12, 2, '#3a75ad'); R(g, x - 7, y, 1, 2, '#d7c38a'); R(g, x + 6, y, 1, 2, '#d7c38a'); if (hash(0, y, 8) < 0.2) R(g, x - 2, y, 3, 1, '#6ea3d6'); }
+    for (let y = 0; y < 480; y += 2) { const x = river(y); R(g, x - 6, y, 12, 2, '#3a75ad'); R(g, x - 7, y, 1, 2, '#d7c38a'); R(g, x + 6, y, 1, 2, '#d7c38a'); if (hash(0, y, 8) < 0.2) R(g, x - 2, y, 3, 1, '#6ea3d6'); }
     const mountain = (mx, my, s) => {
       for (let i = 0; i < s; i += 2) {
         const w = Math.max(2, i * 2);
@@ -589,7 +608,7 @@
     [[250, 150, 60], [320, 120, 50], [410, 100, 70], [540, 100, 56], [620, 130, 64], [700, 110, 48], [200, 100, 40], [470, 60, 40], [380, 60, 36], [660, 70, 40]].forEach(([x, y, s]) => mountain(x, y, s));
     const forest = (fx, fy) => { R(g, fx - 3, fy - 5, 7, 6, '#2e5e27'); R(g, fx - 2, fy - 6, 5, 2, '#3f7f33'); R(g, fx, fy + 1, 1, 2, '#4a3218'); };
     for (let n = 0; n < 160; n++) {
-      const x = hash(n, 1, 11) * CW, y = 220 + hash(n, 2, 11) * 250;
+      const x = hash(n, 1, 11) * 768, y = 220 + hash(n, 2, 11) * 250;
       if (Math.abs(x - river(y)) < 18 || distToRoute(M.ROUTES.start.concat(['R3', 'X']), x, y) < 14) continue;
       forest(x, y);
     }
@@ -608,6 +627,11 @@
   }
 
   function drawWorld(now) {
+    ctx.save();
+    ctx.scale(1 / WSX, 1 / WSY);
+    try { drawWorldScaled(now); } finally { ctx.restore(); }
+  }
+  function drawWorldScaled(now) {
     const s = S(), g = ctx, inc = s.incident, cv = s.caravan;
     if (!worldBg) buildWorldBg();
     g.drawImage(worldBg, 0, 0);
@@ -615,6 +639,20 @@
     const passSel = ui.sel && ui.sel.kind === 'world' && ui.sel.what === 'pass';
     if (blockedNow || passSel) dotted(g, M.ROUTES.pass, 'rgba(255,240,180,.55)', 5, 6);
     dotted(g, M.ROUTES.start.concat(['R3', 'X']), '#5a3c1e', 7, 4);
+    dotted(g, ['R1', 'MB'], '#5a3c1e', 7, 4);
+    {
+      const [mx, my] = WN.MB;
+      for (const [ox, oy] of [[-16, 0], [0, -6], [14, 2]]) {
+        R(g, mx + ox - 8, my + oy - 6, 16, 12, INK); R(g, mx + ox - 7, my + oy - 3, 14, 8, '#c9b48a'); R(g, mx + ox - 9, my + oy - 9, 18, 5, INK); R(g, mx + ox - 8, my + oy - 8, 16, 3, '#6b4a2b'); R(g, mx + ox - 1, my + oy + 1, 3, 4, '#4a2e17');
+      }
+      const gw = s.world ? s.world.goodwill : 0;
+      R(g, mx - 20, my + 14, 42, 6, INK); R(g, mx - 19, my + 15, Math.round(40 * (gw + 100) / 200), 4, gw >= 25 ? '#6fe07a' : gw >= 0 ? '#e0b64a' : '#d8323c');
+    }
+    const tpos = tradePos();
+    if (tpos) {
+      const [px, py] = tpos.map(Math.round);
+      R(g, px - 7, py - 5, 14, 9, INK); R(g, px - 6, py - 4, 12, 5, '#c9a55a'); R(g, px - 5, py + 3, 3, 3, INK); R(g, px + 2, py + 3, 3, 3, INK);
+    }
     dotted(g, M.ROUTES.pass, '#efeadf', 7, 3);
     // colony
     const [cx, cy] = WN.C;
@@ -668,9 +706,10 @@
     label(inc && inc.kind === 'caravan' && inc.stage !== 'returning' ? `${inc.traveler.name}'s camp` : 'Eastern camp', xx - 26, xy + 26);
     label('Mountain pass', WN.P2[0] - 30, WN.P2[1] - 12);
     label('Old road', WN.R3[0] - 10, WN.R3[1] + 20);
+    label(`${M.NEIGHBOR}`, WN.MB[0] - 24, WN.MB[1] + 32);
     if (ui.sel && ui.sel.kind === 'world') {
       const w = ui.sel.what;
-      const pos = w === 'caravan' ? caravanPos() : w === 'blockage' ? blockagePos() : w === 'camp' ? WN.X : w === 'colony' ? WN.C : null;
+      const pos = w === 'caravan' ? caravanPos() : w === 'blockage' ? blockagePos() : w === 'camp' ? WN.X : w === 'colony' ? WN.C : w === 'millbrook' ? WN.MB : w === 'trade' ? tradePos() : null;
       if (pos) brackets(g, pos[0] - 14, pos[1] - 14, 28, 28);
     }
   }
@@ -985,6 +1024,7 @@
   let lastBarSig = '', lastLetterSig = '', lastInspectSig = '', inspectLive = null;
 
   function activity(c) {
+    if (c.away && S().trade && S().trade.members.includes(c.id)) return `Trading at ${M.NEIGHBOR}`;
     if (c.away) {
       const cv = S().caravan;
       return cv && cv.status === 'blocked' ? 'With the caravan, waiting at the blockage' : cv && cv.status === 'returning' ? 'With the caravan, heading home' : 'With the caravan';
@@ -1296,6 +1336,22 @@
       case 'pass':
         return { sig: sigBase, build: () => [h('h4', null, 'Mountain pass'), h('p', null, 'Goes around the old road. About 5 hours from the blockage to the camp.'), deadlineLine(),
           inc && inc.stage === 'setback' && cv && cv.status === 'blocked' ? h('div', { class: 'mm-gizmos' }, gizmo('Send the caravan this way', () => order({ type: 'caravan-reroute' }))) : null] };
+      case 'millbrook': {
+        const gw = s.world.goodwill;
+        const mood = gw >= 50 ? 'close allies' : gw >= 25 ? 'friendly' : gw >= 0 ? 'cautious' : gw >= -30 ? 'cold' : 'hostile';
+        return { sig: `${sigBase}${gw}${!!s.trade}${!!s.caravan}`, build: () => [h('h4', null, M.NEIGHBOR),
+          h('p', null, `A farming village to the south. They are ${mood} toward the colony (goodwill ${gw}).`),
+          h('p', { class: 'mm-muted' }, `Trade rate ${Math.round(q.tradeRate() * 100)}%. ${gw >= 30 ? 'They warn you early about raiders.' : 'At goodwill 30 they would warn you early about raiders.'} ${gw >= 25 ? 'They help when you are short.' : ''}`),
+          h('div', { class: 'mm-gizmos' }, gizmo('Send a trade caravan', () => openModal('trade', { picked: [], give: {}, want: 'medicine' }), s.trade || s.caravan ? 'A caravan is already out' : q.eligibleForCaravan().length < 1 ? 'Nobody healthy at home' : null)),
+          h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: () => openModal('chronicle') } }, 'Read the chronicle')] };
+      }
+      case 'trade': {
+        const tr = s.trade;
+        if (!tr) return { sig: `${sigBase}none`, build: () => [h('h4', null, 'No trade caravan out')] };
+        return { sig: `${sigBase}${tr.status}`, build: () => [h('h4', null, 'Trade caravan'),
+          h('p', null, tr.members.map((id) => (s.colonists.find((c) => c.id === id) || {}).name).join(' and ')),
+          h('p', null, tr.status === 'outbound' ? `Carrying ${Object.entries(tr.give).map(([k, n]) => `${n} ${M.ITEMS[k].label.toLowerCase()}`).join(', ')} to ${M.NEIGHBOR} to trade for ${M.ITEMS[tr.want].label.toLowerCase()}.` : `Coming home with ${tr.got} ${M.ITEMS[tr.want].label.toLowerCase()}.`)] };
+      }
       case 'road':
         return { sig: sigBase, build: () => [h('h4', null, 'Old road'), h('p', null, 'The usual way east. About 3.5 hours from the colony to the camp.')] };
       case 'camp':
@@ -1370,6 +1426,8 @@
     else if (m.kind === 'menu') node = menuModal();
     else if (m.kind === 'caravan') node = caravanModal(m.arg);
     else if (m.kind === 'research') node = researchModal();
+    else if (m.kind === 'trade') node = tradeModal(m.arg);
+    else if (m.kind === 'chronicle') node = chronicleModal();
     el.modal.replaceChildren(node);
     el.modal.hidden = false;
   }
@@ -1397,6 +1455,44 @@
       h('div', { class: 'mm-actions' }, actions, jump,
         !l.actions ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.command({ type: 'dismiss-letter', id: l.id }); lastLetterSig = ''; closeModal(); } } }, 'Dismiss') : null));
   }
+  function tradeModal(arg) {
+    const s = S();
+    const cnt = q.counts();
+    const kinds = Object.keys(M.TRADE_VALUE);
+    const value = Object.entries(arg.give).reduce((a, [k, n]) => a + (k === arg.want ? 0 : n * M.TRADE_VALUE[k]), 0);
+    const expect = Math.floor((value * q.tradeRate()) / M.TRADE_VALUE[arg.want]);
+    const people = q.eligibleForCaravan().map((c) => {
+      const on = arg.picked.includes(c.id);
+      return h('button', { type: 'button', class: `mm-pick${on ? ' is-on' : ''}`, 'aria-pressed': String(on),
+        on: { click: () => { const i = arg.picked.indexOf(c.id); if (i >= 0) arg.picked.splice(i, 1); else if (arg.picked.length < 2) arg.picked.push(c.id); renderModal(); } } },
+      h('strong', null, c.name), h('span', { class: 'mm-traits' }, (c.traits || []).map((k) => h('span', { class: 'mm-trait' }, M.TRAITS[k].label))), h('small', null, `Mood ${Math.round(c.mood)}`));
+    });
+    const step = (k, d) => { arg.give[k] = Math.max(0, Math.min(cnt[k], (arg.give[k] || 0) + d)); renderModal(); };
+    return modalFrame(`Trade with ${M.NEIGHBOR}`,
+      h('p', null, `The trip takes about ${Math.round(q.tradeLeg() * 2)} hours there and back; the colonists who go do no work at home. ${M.NEIGHBOR} pays ${Math.round(q.tradeRate() * 100)}% of fair value right now.`),
+      h('p', { class: 'mm-kicker' }, 'Who goes (one or two)'), h('div', { class: 'mm-picks' }, people),
+      h('p', { class: 'mm-kicker' }, 'What to bring'),
+      h('div', { class: 'mm-goods' }, kinds.filter((k) => k !== arg.want).map((k) => h('div', { class: 'mm-good' },
+        h('span', null, `${M.ITEMS[k].label} (${cnt[k]})`),
+        h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: () => step(k, -10) } }, '−10'),
+        h('b', null, arg.give[k] || 0),
+        h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: () => step(k, 10) } }, '+10')))),
+      h('p', { class: 'mm-kicker' }, 'What to ask for'),
+      h('div', { class: 'mm-actions' }, kinds.map((k) => h('button', { type: 'button', class: `mm-btn mm-btn-s${arg.want === k ? ' is-on' : ''}`, on: { click: () => { arg.want = k; delete arg.give[k]; renderModal(); } } }, M.ITEMS[k].label))),
+      h('p', null, `Expected: about ${expect} ${M.ITEMS[arg.want].label.toLowerCase()}.`),
+      h('div', { class: 'mm-actions' },
+        h('button', { type: 'button', class: 'mm-btn mm-btn-primary', disabled: !arg.picked.length || !value, on: { click: () => {
+          const r = order({ type: 'trade-send', members: arg.picked.slice(), give: { ...arg.give }, want: arg.want });
+          if (r.ok) { closeModal(); setView('world'); select({ kind: 'world', what: 'trade' }); }
+        } } }, 'Send the caravan')));
+  }
+
+  function chronicleModal() {
+    const hist = S().history.slice().reverse();
+    return modalFrame('Chronicle',
+      hist.length ? h('ul', { class: 'mm-chronicle' }, hist.map((e) => h('li', null, h('span', null, clock(e.t)), e.text))) : h('p', { class: 'mm-muted' }, 'Nothing worth writing down yet.'));
+  }
+
   function researchModal() {
     const s = S();
     const hasBench = s.things.some((th) => th.type === 'bench' && !th.bp);

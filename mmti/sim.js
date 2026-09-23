@@ -78,10 +78,12 @@ window.MMTI = window.MMTI || {};
   const RETURN_HOURS = 3;
 
   const WORLD = {
-    nodes: { C: [96, 300], R1: [214, 318], R2: [330, 332], R3: [470, 318], X: [640, 262], P1: [352, 200], P2: [470, 150], P3: [586, 176] },
-    hours: { 'C-R1': 0.8, 'R1-R2': 0.7, 'R2-R3': 1, 'R3-X': 1, 'R2-P1': 1.4, 'P1-P2': 1.4, 'P2-P3': 1.3, 'P3-X': 0.9 },
+    nodes: { C: [96, 300], R1: [214, 318], R2: [330, 332], R3: [470, 318], X: [640, 262], P1: [352, 200], P2: [470, 150], P3: [586, 176], MB: [300, 440] },
+    hours: { 'C-R1': 0.8, 'R1-R2': 0.7, 'R2-R3': 1, 'R3-X': 1, 'R2-P1': 1.4, 'P1-P2': 1.4, 'P2-P3': 1.3, 'P3-X': 0.9, 'R1-MB': 2.7 },
   };
-  const ROUTES = { start: ['C', 'R1', 'R2'], road: ['R2', 'R3', 'X'], pass: ['R2', 'P1', 'P2', 'P3', 'X'] };
+  const ROUTES = { start: ['C', 'R1', 'R2'], road: ['R2', 'R3', 'X'], pass: ['R2', 'P1', 'P2', 'P3', 'X'], mill: ['C', 'R1', 'MB'] };
+  const TRADE_VALUE = { wood: 1, potato: 1, berries: 0.7, meal: 3, preserved: 1.2, medicine: 8 };
+  const NEIGHBOR = 'Millbrook';
 
   const PEOPLE = [
     { name: 'Mara', traits: ['hardworker', 'coldhater'], shirt: '#c0533a', hair: '#3b2a20', skills: { build: 1.3, repair: 1, plants: 0.9, cook: 0.9 }, prio: { doctor: 3, build: 1, repair: 2, cook: 3, grow: 3, chop: 2, haul: 3 } },
@@ -190,6 +192,7 @@ window.MMTI = window.MMTI || {};
       story: { nextAt: START_T + 7, counts: {}, travelers: 0, nextThreatAt: START_T + 5 * 24 },
       raiders: [], raid: null, fires: {}, shots: [], terrainVersion: 0, dead: [],
       research: { done: [], active: null, progress: {} }, wind: 0.6, windAt: START_T,
+      world: { goodwill: 10, lastGiftT: -1e9, nextWorldAt: START_T + 3 * 24 }, trade: null, history: [],
       roomTemps: [], lastDay: dayIndex(START_T), warn: {}, relations: [], chatter: [], nextChat: START_T + 0.5,
     };
     const set = (x, y, t) => { if (inb(x, y)) s.terrain[idx(x, y)] = t; };
@@ -268,6 +271,7 @@ window.MMTI = window.MMTI || {};
         + '• Winter comes in 12 days: crops stop growing and the heater burns wood day and night.\n'
         + '• Each colonist has two traits and people they care about. Their mood rises and falls with how they are treated; a miserable colonist may stop working for a while.\n'
         + '• Raiders and fires will come. Draft colonists to fight or move them by hand (right-click), shelter behind doors, and rescue anyone who goes down. Wounds bleed until a doctor tends them.\n'
+        + `• ${NEIGHBOR}, a village to the south, trades with you and asks for help now and then. It remembers how you answer.\n`
         + '• Space pauses. Keys 1, 2, 3 change speed.\n\n'
         + 'Things will go wrong. Handle them however you like. The Archivist, in the small hut, will tell you what she has noticed about you.',
     });
@@ -356,7 +360,7 @@ window.MMTI = window.MMTI || {};
     froze: () => 'I couldn’t feel my feet last night.', coldnight: () => 'That was a cold night.', slept: () => 'Slept well.',
     ground: () => 'My back hurts from the ground.', rescued: () => 'I owe you all.', rescuer: () => 'We made it in time.',
     toolate: () => 'We were too late.', turnedaway: () => 'We should have helped them.', gaveup: () => 'We left them out there.',
-    vented: () => 'Sorry. I needed that.', welcomed: () => 'Good to have another pair of hands.',
+    vented: () => 'Sorry. I needed that.', welcomed: () => 'Good to have another pair of hands.', helped: () => 'Glad we could help them.',
   };
   function chatterStep(s) {
     s.chatter = (s.chatter || []).filter((b) => b.until > s.t);
@@ -1083,6 +1087,7 @@ window.MMTI = window.MMTI || {};
         if (s.research.progress[key] >= RESEARCH[key].hours) {
           s.research.done.push(key);
           s.research.active = null;
+          chronicle(s, `The colony learned ${RESEARCH[key].label.toLowerCase()}.`);
           letter(s, { kind: 'good', title: `Research complete: ${RESEARCH[key].label}`, body: `${RESEARCH[key].desc}\n\nChoose the next project in Research.` });
           return endJob(s, c);
         }
@@ -1397,6 +1402,8 @@ window.MMTI = window.MMTI || {};
     const i = idx(x, y);
     if (!structAt[i] && !blocked[i]) { makeThing(s, 'grave', x, y, { name: c.name }); reindex(s); }
     s.dead.push({ name: c.name, t: r2(s.t), cause });
+    chronicle(s, `${c.name} ${cause}.`);
+    s.story.nextThreatAt = Math.max(s.story.nextThreatAt || 0, s.t + 48);
     letter(s, { kind: 'threat', title: `${c.name} has died`, body: `${c.name} ${cause}.${s.colonists.length ? ' The others will feel this for days.' : ''}` });
     if (!s.colonists.length) letter(s, { kind: 'threat', title: 'The colony has fallen', body: 'Nobody is left. Open the menu to start a new colony. What the Archivist has learned about you is kept.' });
   }
@@ -1559,6 +1566,8 @@ window.MMTI = window.MMTI || {};
           drafted: raid.drafted || [], deaths: s.dead.filter((d) => d.t >= raid.startT).map((d) => d.name),
         }, s);
       }
+      chronicle(s, `Raiders attacked: ${raid.killed} fell, ${raid.fled} escaped${Object.keys(raid.stolen).length ? ` with ${Object.entries(raid.stolen).map(([k, n]) => `${n} ${ITEMS[k].label.toLowerCase()}`).join(' and ')}` : ''}.`);
+      if (raid.wounded) s.story.nextThreatAt = Math.max(s.story.nextThreatAt, s.t + 48);
       s.raid = null;
     }
   }
@@ -1566,10 +1575,11 @@ window.MMTI = window.MMTI || {};
   function startRaid(s) {
     const n = Math.max(2, Math.round(s.colonists.length * 0.7));
     const edge = pick(['east', 'north', 'south']);
-    s.raid = { startT: s.t, arriveAt: s.t + 1.5, n, edge, spawned: false, leaveAt: null, killed: 0, fled: 0, stolen: {}, drafted: [] };
+    const warned = s.world && s.world.goodwill >= 30;
+    s.raid = { startT: s.t, arriveAt: s.t + (warned ? 3 : 1.5), n, edge, spawned: false, leaveAt: null, killed: 0, fled: 0, stolen: {}, drafted: [] };
     letter(s, {
       kind: 'threat', title: 'Raiders are coming',
-      body: `Scouts spotted ${n} raiders coming from the ${edge}. They will be here in about 1.5 hours and will take whatever supplies they can reach.
+      body: `${warned ? `${NEIGHBOR} sent word early: ` : 'Scouts spotted '}${n} raiders coming from the ${edge}. They will be here in about ${warned ? 3 : 1.5} hours and will take whatever supplies they can reach.
 
 `
         + 'Draft colonists to fight (select a colonist, then Draft; right-click to move them; standing next to a wall gives cover), bring everyone indoors behind doors, or keep working and let them take what they want.',
@@ -1653,8 +1663,113 @@ window.MMTI = window.MMTI || {};
   function threatTick(s) {
     if (s.t < (s.story.nextThreatAt || Infinity) || s.incident || s.caravan || s.raid || Object.keys(s.fires).length) return;
     if (s.colonists.filter((c) => !c.away).length < 2) { s.story.nextThreatAt = s.t + 12; return; }
-    const ok = Math.random() < 0.6 ? (startRaid(s), true) : startFire(s) || (startRaid(s), true);
+    const cnt = counts(s);
+    const wealth = Object.entries(cnt).reduce((a, [k, n]) => a + n * (TRADE_VALUE[k] || 1), 0);
+    const pRaid = Math.max(0.3, Math.min(0.85, 0.3 + wealth / 500));
+    const dry = outdoorTemp(s) >= 15;
+    const ok = Math.random() < pRaid || !dry ? (startRaid(s), true) : startFire(s) || (startRaid(s), true);
     if (ok) s.story.nextThreatAt = s.t + rand(4, 6) * 24;
+  }
+
+  // ---------- the outside world ----------
+  function chronicle(s, text) {
+    s.history.push({ t: r2(s.t), text });
+    if (s.history.length > 200) s.history.shift();
+  }
+  function goodwill(s, delta, why) {
+    const w = s.world;
+    const before = w.goodwill;
+    w.goodwill = Math.max(-100, Math.min(100, w.goodwill + delta));
+    if (why) chronicle(s, `${why} (${NEIGHBOR} goodwill ${before} → ${w.goodwill}).`);
+  }
+  function tradeRate(s) { return Math.max(0.35, Math.min(1.05, 0.7 + s.world.goodwill / 300)); }
+  function takeFromStock(s, kind, n) {
+    let left = n;
+    for (const it of s.items.slice().sort((a, b) => b.n - a.n)) {
+      if (it.kind !== kind || left <= 0) continue;
+      left -= takeItem(s, it, left);
+    }
+    return n - left;
+  }
+  const tradeLeg = () => segHours('C', 'R1') + segHours('R1', 'MB');
+
+  function tradeTick(s, dt) {
+    const tr = s.trade;
+    if (!tr) return;
+    tr.prog += dt;
+    if (tr.status === 'outbound' && tr.prog >= tradeLeg()) {
+      tr.status = 'returning';
+      tr.prog = 0;
+      const value = Object.entries(tr.give).reduce((a, [k, n]) => a + n * TRADE_VALUE[k], 0);
+      tr.got = Math.floor((value * tradeRate(s)) / TRADE_VALUE[tr.want]);
+      goodwill(s, 3);
+      letter(s, { kind: 'good', title: `Traded at ${NEIGHBOR}`, body: `The caravan traded ${Object.entries(tr.give).map(([k, n]) => `${n} ${ITEMS[k].label.toLowerCase()}`).join(', ')} for ${tr.got} ${ITEMS[tr.want].label.toLowerCase()} and is heading home.`, focus: { world: 'trade' } });
+    } else if (tr.status === 'returning' && tr.prog >= tradeLeg()) {
+      tr.members.forEach((id, n) => {
+        const c = colonistById(s, id);
+        if (!c) return;
+        c.away = false;
+        [c.x, c.y] = [[1, 12], [1, 13]][n % 2];
+        endJob(s, c);
+        if (has(c, 'wanderer')) addMemory(s, c, 'road', 'Enjoyed the trip', 6, 24);
+      });
+      if (tr.got) dropItem(s, tr.want, tr.got, 1, 13);
+      chronicle(s, `A trade caravan came back from ${NEIGHBOR} with ${tr.got} ${ITEMS[tr.want].label.toLowerCase()}.`);
+      s.trade = null;
+    }
+  }
+
+  function worldTick(s) {
+    const w = s.world;
+    const cnt = counts(s);
+    const homeN = s.colonists.filter((c) => !c.away).length;
+    const food = rawFood(cnt) * 0.3 + cnt.meal * 0.9 + cnt.preserved * 0.3;
+    // Neighbors who like you help when you're in trouble.
+    if (w.goodwill >= 25 && s.t - w.lastGiftT > 96 && (food < homeN * 1.5 || cnt.medicine === 0) && homeN) {
+      w.lastGiftT = s.t;
+      const kind = cnt.medicine === 0 ? 'medicine' : 'preserved';
+      const n = kind === 'medicine' ? 4 : 30;
+      dropItem(s, kind, n, W - 2, 13);
+      letter(s, { kind: 'good', title: `${NEIGHBOR} sent help`, body: `Word of your trouble reached ${NEIGHBOR}. They sent ${n} ${ITEMS[kind].label.toLowerCase()}, left at the east edge of the map.` });
+      chronicle(s, `${NEIGHBOR} sent ${n} ${ITEMS[kind].label.toLowerCase()} when the colony was short.`);
+    }
+    if (s.t < w.nextWorldAt || s.incident || s.raid || w.request) return;
+    w.nextWorldAt = s.t + rand(4, 7) * 24;
+    const cal = calendar(s.t);
+    const kind = cal.season === 'Fall' || cal.season === 'Winter' ? 'food' : pick(['food', 'wood']);
+    const amount = kind === 'food' ? 30 : 40;
+    w.request = { id: s.nextId++, kind, amount, t: s.t, until: s.t + 24 };
+    letter(s, {
+      kind: 'quest', title: `${NEIGHBOR} asks for help`, forRequest: w.request.id,
+      body: `${NEIGHBOR} is short of ${kind} and asks for ${amount}${kind === 'food' ? ' food (a meal counts as 3)' : ' wood'}. A runner would carry it today.\n\nYou have ${kind === 'food' ? `${rawFood(cnt) + cnt.meal * 3 + cnt.preserved} food` : `${cnt.wood} wood`} now. How ${NEIGHBOR} feels about you affects trade prices, warnings about raids, and whether they help when you are in trouble.`,
+      actions: [{ label: `Send ${amount} ${kind}`, cmd: { type: 'request-answer', id: w.request.id, accept: true } }, { label: 'Refuse', cmd: { type: 'request-answer', id: w.request.id, accept: false } }],
+    });
+  }
+  function requestTick(s) {
+    const r = s.world.request;
+    if (r && s.t >= r.until) answerRequest(s, r, false, true);
+  }
+  function answerRequest(s, r, accept, expired) {
+    const cnt = counts(s);
+    const have = r.kind === 'food' ? rawFood(cnt) + cnt.meal * 3 + cnt.preserved : cnt.wood;
+    if (M.observe && M.observe.logDecision) {
+      M.observe.logDecision('neighbor-request', { resource: r.kind, amount: r.amount, accept: !!accept, expired: !!expired, have, colonists: s.colonists.length, season: calendar(s.t).season, goodwill: s.world.goodwill }, s);
+    }
+    for (const l of s.letters) if (l.forRequest === r.id) { delete l.actions; l.read = true; }
+    s.world.request = null;
+    if (accept) {
+      if (r.kind === 'food') {
+        let left = r.amount;
+        for (const k of ['berries', 'potato', 'preserved']) left -= takeFromStock(s, k, left);
+        if (left > 0) takeFromStock(s, 'meal', Math.ceil(left / 3));
+      } else takeFromStock(s, 'wood', r.amount);
+      goodwill(s, 20, `The colony sent ${r.amount} ${r.kind} to ${NEIGHBOR}`);
+      for (const c of s.colonists) if (has(c, 'kind')) addMemory(s, c, 'helped', `Helped ${NEIGHBOR}`, 6, 48);
+      letter(s, { kind: 'good', title: `${NEIGHBOR} is grateful`, body: `The runner delivered ${r.amount} ${r.kind}. ${NEIGHBOR} will remember it.` });
+    } else {
+      goodwill(s, expired ? -8 : -12, expired ? `The colony ignored ${NEIGHBOR}'s request for ${r.kind}` : `The colony refused ${NEIGHBOR}'s request for ${r.kind}`);
+      for (const c of s.colonists) if (has(c, 'kind')) addMemory(s, c, 'turnedaway', `Refused ${NEIGHBOR}`, -8, 48);
+    }
   }
 
   // ---------- incidents ----------
@@ -1672,7 +1787,7 @@ window.MMTI = window.MMTI || {};
     const r = roomAt(heater.x, heater.y);
     return !!r && !r.outdoors && heatSourcesIn(s, r.id) === 1 && counts(s).wood >= 30 && home(s).length >= 2;
   }
-  function caravanViable(s) { return !s.caravan && home(s).filter((c) => health(c) > 0.5).length >= 3; }
+  function caravanViable(s) { return !s.caravan && !s.trade && home(s).filter((c) => health(c) > 0.5).length >= 3; }
 
   function storyTick(s) {
     if (s.incident || s.caravan || s.raid || Object.keys(s.fires || {}).length || s.t < s.story.nextAt) return;
@@ -1836,6 +1951,7 @@ window.MMTI = window.MMTI || {};
       }
       if (cv.status === 'blocked' && s.t >= inc.startT + 24) {
         obs('episodeEnd', inc, { how: 'gave-up', reason: 'no-decision' });
+        goodwill(s, -6, `The caravan gave up on ${inc.traveler.name}`);
         letter(s, { kind: 'threat', title: 'The caravan turned back', body: `After a day at the blockage, the caravan gave up on ${inc.traveler.name} and is heading home.` });
         cv.status = 'returning';
         cv.prog = 0;
@@ -1867,6 +1983,7 @@ window.MMTI = window.MMTI || {};
   function arrive(s, inc, cv) {
     const late = inc.deadlineT != null && s.t > inc.deadlineT;
     inc.late = late;
+    goodwill(s, late ? 4 : 12, late ? `The colony reached ${inc.traveler.name} late` : `The colony rescued ${inc.traveler.name}`);
     for (const id of cv.members) {
       const c = s.colonists.find((o) => o.id === id);
       if (c) addMemory(s, c, late ? 'toolate' : 'rescuer', late ? `Too late for ${inc.traveler.name}` : `Reached ${inc.traveler.name} in time`, late ? -8 : 8, 48);
@@ -1901,6 +2018,7 @@ window.MMTI = window.MMTI || {};
         for (const id of cv.members) s.relations.push({ a: c.id, b: id, kind: 'friend' });
         for (const o of s.colonists) if (!cv.members.includes(o.id)) addMemory(s, o, 'welcomed', `${t.name} joined us`, 3, 24);
         s.colonists.push(c);
+        chronicle(s, `${t.name}, a ${t.role}, joined the colony${inc.late ? ' after a rescue that came almost too late' : ''}.`);
         letter(s, { kind: 'good', title: `${t.name} joined the colony`, body: `${t.name} decided to stay${inc.late ? ' once they recover' : ''}. Another pair of hands, and another mouth to feed.`, focus: { colonistId: c.id } });
       } else {
         dropItem(s, 'potato', 15, W - 2, 13);
@@ -1913,6 +2031,7 @@ window.MMTI = window.MMTI || {};
   }
 
   function declineCaravan(s, inc, expired) {
+    goodwill(s, -8, expired ? `The colony ignored a call for help from ${inc.traveler.name}` : `The colony turned ${inc.traveler.name} away`);
     for (const c of home(s)) addMemory(s, c, 'turnedaway', expired ? `Ignored ${inc.traveler.name}’s call for help` : `Turned ${inc.traveler.name} away`, has(c, 'kind') ? -10 : -3, 48);
     letter(s, { kind: 'info', title: expired ? 'The request expired' : 'Request declined', body: `${inc.traveler.name} will have to manage without the colony.` });
     s.incident = null;
@@ -2069,6 +2188,34 @@ window.MMTI = window.MMTI || {};
         if (inc && inc.kind === 'caravan' && tg.kind === 'world' && tg.what === 'blockage') consult(s, inc, 'blockage');
         return ok();
       }
+      case 'trade-send': {
+        if (s.trade || s.caravan) return fail('A caravan is already out');
+        const eligible = home(s).filter((c) => health(c) > 0.5);
+        const members = [...new Set(cmd.members || [])].map((id) => eligible.find((c) => c.id === id)).filter(Boolean);
+        if (members.length < 1 || members.length > 2) return fail('Choose one or two healthy colonists');
+        if (!TRADE_VALUE[cmd.want]) return fail('Choose what to ask for');
+        const cnt = counts(s);
+        const give = {};
+        for (const [k, n] of Object.entries(cmd.give || {})) if (n > 0 && TRADE_VALUE[k] && k !== cmd.want) give[k] = Math.min(n, cnt[k]);
+        if (!Object.values(give).some((n) => n > 0)) return fail('Choose goods to trade');
+        for (const [k, n] of Object.entries(give)) give[k] = takeFromStock(s, k, n);
+        for (const c of members) { endJob(s, c); c.duty = null; c.away = true; c.lastTripT = s.t; }
+        s.trade = { members: members.map((c) => c.id), give, want: cmd.want, status: 'outbound', prog: 0 };
+        if (M.observe && M.observe.logDecision) M.observe.logDecision('trade', { members: members.map((c) => c.name), give, want: cmd.want, goodwill: s.world.goodwill, stock: cnt }, s);
+        letter(s, { kind: 'info', title: `A trade caravan left for ${NEIGHBOR}`, body: `${members.map((c) => c.name).join(' and ')} are carrying goods to ${NEIGHBOR}. Back in about ${Math.round(tradeLeg() * 2)} hours.`, focus: { world: 'trade' } });
+        return ok();
+      }
+      case 'request-answer': {
+        const r = s.world.request;
+        if (!r || r.id !== cmd.id) return fail('That request is over');
+        if (cmd.accept) {
+          const cnt = counts(s);
+          const have = r.kind === 'food' ? rawFood(cnt) + cnt.meal * 3 + cnt.preserved : cnt.wood;
+          if (have < r.amount) return fail(`You only have ${have}`);
+        }
+        answerRequest(s, r, !!cmd.accept, false);
+        return ok();
+      }
       case 'research': {
         const r = RESEARCH[cmd.key];
         if (!r) return fail();
@@ -2125,6 +2272,7 @@ window.MMTI = window.MMTI || {};
       }
       case 'caravan-send': {
         if (!inc || inc.kind !== 'caravan' || inc.stage !== 'request') return fail();
+        if (s.trade) return fail('The trade caravan is still out');
         const eligible = home(s).filter((c) => health(c) > 0.5);
         const members = Array.isArray(cmd.members)
           ? [...new Set(cmd.members)].map((id) => eligible.find((c) => c.id === id)).filter(Boolean)
@@ -2200,6 +2348,9 @@ window.MMTI = window.MMTI || {};
     }
     storyTick(s);
     threatTick(s);
+    tradeTick(s, dt);
+    worldTick(s);
+    requestTick(s);
   }
 
   function init(s, loaded) {
@@ -2223,6 +2374,8 @@ window.MMTI = window.MMTI || {};
     if (!s.fires) s.fires = {};
     if (!s.dead) s.dead = [];
     if (!s.research) s.research = { done: [], active: null, progress: {} };
+    if (!s.world) s.world = { goodwill: 10, lastGiftT: -1e9, nextWorldAt: s.t + 48 };
+    if (!s.history) s.history = [];
     if (s.wind == null) { s.wind = 0.6; s.windAt = s.t; }
     for (const c of s.colonists) if (c.prio.research == null) c.prio.research = 3;
     s.shots = [];
@@ -2249,7 +2402,7 @@ window.MMTI = window.MMTI || {};
 
   // ---------- public API ----------
   Object.assign(M, {
-    W, H, T, DEFS, ITEMS, TRAITS, REL_LABEL, RESEARCH, BUILDABLE, WORK_TYPES, WORLD, ROUTES, HEATER_CAUSES, BLOCK_CAUSES, CLEAR_HOURS, RETURN_HOURS, CROP_HOURS,
+    W, H, T, DEFS, ITEMS, TRAITS, REL_LABEL, RESEARCH, TRADE_VALUE, NEIGHBOR, BUILDABLE, WORK_TYPES, WORLD, ROUTES, HEATER_CAUSES, BLOCK_CAUSES, CLEAR_HOURS, RETURN_HOURS, CROP_HOURS,
     advance(hours) {
       let left = hours;
       while (left > 1e-9) { const dt = Math.min(STEP, left); step(S, dt); left -= dt; }
@@ -2288,6 +2441,8 @@ window.MMTI = window.MMTI || {};
       thoughts: (c) => thoughts(S, c),
       raiders: () => S.raiders,
       researched: (k) => researched(S, k),
+      tradeRate: () => tradeRate(S),
+      tradeLeg: () => tradeLeg(),
       canPlace: (k) => canPlace(S, k),
       fires: () => S.fires,
       relationsOf: (c) => relationsOf(S, c),

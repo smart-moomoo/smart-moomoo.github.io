@@ -186,7 +186,7 @@ window.MMTI = window.MMTI || {};
     // Decisions not yet interpreted by any rule; kept raw so later rules can use them.
     logDecision(kind, data, s) {
       if (!store.decisions) store.decisions = [];
-      store.decisions.push({ kind, t: r2(s.t), at: new Date().toISOString(), ...data });
+      store.decisions.push({ ...data, kind, t: r2(s.t), at: new Date().toISOString() });
       save();
     },
     classify, unscoredReason, computeModel, portraitCards,
