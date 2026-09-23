@@ -27,6 +27,7 @@ window.MMTI = window.MMTI || {};
     berries: { label: 'Berries', stack: 50, spoil: 48, food: 0.3, raw: true },
     potato: { label: 'Potatoes', stack: 50, spoil: 480, food: 0.3, raw: true },
     meal: { label: 'Meals', stack: 20, spoil: 96, food: 0.9 },
+    medicine: { label: 'Medicine', stack: 25 },
   };
 
   const DEFS = {
@@ -40,9 +41,11 @@ window.MMTI = window.MMTI || {};
     tree: { label: 'Tree', natural: true },
     bush: { label: 'Berry bush', natural: true },
     keeper: { label: 'The Archivist' },
+    grave: { label: 'Grave' },
   };
+  const FLAMMABLE = new Set(['door', 'bed', 'table', 'tree', 'bush', 'grave']);
   const BUILDABLE = ['wall', 'door', 'bed', 'table', 'campfire', 'stove'];
-  const WORK_TYPES = ['build', 'repair', 'cook', 'grow', 'chop', 'haul'];
+  const WORK_TYPES = ['doctor', 'build', 'repair', 'cook', 'grow', 'chop', 'haul'];
 
   const HEATER_CAUSES = {
     flue: { finding: 'The flue is clogged with soot. Cleaning it will fix the heater: about 1 hour of work.', work: 1, wood: 0, p: 0.6 },
@@ -62,13 +65,13 @@ window.MMTI = window.MMTI || {};
   const ROUTES = { start: ['C', 'R1', 'R2'], road: ['R2', 'R3', 'X'], pass: ['R2', 'P1', 'P2', 'P3', 'X'] };
 
   const PEOPLE = [
-    { name: 'Mara', traits: ['hardworker', 'coldhater'], shirt: '#c0533a', hair: '#3b2a20', skills: { build: 1.3, repair: 1, plants: 0.9, cook: 0.9 }, prio: { build: 1, repair: 2, cook: 3, grow: 3, chop: 2, haul: 3 } },
-    { name: 'Tobin', traits: ['greenthumb', 'homebody'], shirt: '#3d6f9e', hair: '#d9a441', skills: { build: 0.9, repair: 0.8, plants: 1.3, cook: 1 }, prio: { build: 3, repair: 3, cook: 3, grow: 1, chop: 2, haul: 2 } },
-    { name: 'Ines', traits: ['sensitive', 'kind'], shirt: '#7a5aa0', hair: '#1c1c1c', skills: { build: 1, repair: 1.3, plants: 1, cook: 1.3 }, prio: { build: 2, repair: 1, cook: 1, grow: 3, chop: 3, haul: 2 } },
+    { name: 'Mara', traits: ['hardworker', 'coldhater'], shirt: '#c0533a', hair: '#3b2a20', skills: { build: 1.3, repair: 1, plants: 0.9, cook: 0.9 }, prio: { doctor: 3, build: 1, repair: 2, cook: 3, grow: 3, chop: 2, haul: 3 } },
+    { name: 'Tobin', traits: ['greenthumb', 'homebody'], shirt: '#3d6f9e', hair: '#d9a441', skills: { build: 0.9, repair: 0.8, plants: 1.3, cook: 1 }, prio: { doctor: 3, build: 3, repair: 3, cook: 3, grow: 1, chop: 2, haul: 2 } },
+    { name: 'Ines', traits: ['sensitive', 'kind'], shirt: '#7a5aa0', hair: '#1c1c1c', skills: { build: 1, repair: 1.3, plants: 1, cook: 1.3, doctor: 1.3 }, prio: { doctor: 1, build: 2, repair: 1, cook: 1, grow: 3, chop: 3, haul: 2 } },
   ];
   const TRAVELERS = [
     { name: 'Dusk', role: 'trader', traits: ['wanderer', 'gourmand'], shirt: '#5b8a3a', hair: '#8a5a3c' },
-    { name: 'Ansel', role: 'medic', traits: ['kind', 'hardy'], shirt: '#e0e0d8', hair: '#6b4a2b' },
+    { name: 'Ansel', role: 'medic', skills: { doctor: 1.6 }, traits: ['kind', 'hardy'], shirt: '#e0e0d8', hair: '#6b4a2b' },
     { name: 'Kit', role: 'surveyor', traits: ['wanderer', 'lazy'], shirt: '#c99a2e', hair: '#2a2018' },
     { name: 'Bo', role: 'young herder', traits: ['sensitive', 'greenthumb'], shirt: '#8f3f6a', hair: '#b5543c' },
     { name: 'Rhea', role: 'smith', traits: ['hardworker', 'hardy'], shirt: '#4a5a6a', hair: '#e8d8b0' },
@@ -150,9 +153,9 @@ window.MMTI = window.MMTI || {};
       mood: 55, memories: [], breakUntil: 0,
       x, y, path: [], job: null, duty: null, carry: null,
       food: 0.8, rest: 0.9, cold: 0, weak: 0,
-      skills: { build: 1, repair: 1, plants: 1, cook: 1, ...(p.skills || {}) },
-      prio: { build: 3, repair: 3, cook: 3, grow: 3, chop: 3, haul: 3, ...(p.prio || {}) },
-      away: false, bed: null, sleeping: false, facing: 1,
+      skills: { build: 1, repair: 1, plants: 1, cook: 1, doctor: 1, ...(p.skills || {}) },
+      prio: { doctor: 3, build: 3, repair: 3, cook: 3, grow: 3, chop: 3, haul: 3, ...(p.prio || {}) },
+      away: false, bed: null, sleeping: false, facing: 1, injuries: [], blood: 1, downed: false, drafted: false,
     };
   }
 
@@ -165,7 +168,8 @@ window.MMTI = window.MMTI || {};
       zones: { stock: [], grow: {} },
       weather: { override: null, label: null, until: null },
       incident: null, caravan: null, letters: [],
-      story: { nextAt: START_T + 7, counts: {}, travelers: 0 },
+      story: { nextAt: START_T + 7, counts: {}, travelers: 0, nextThreatAt: START_T + 5 * 24 },
+      raiders: [], raid: null, fires: {}, shots: [], terrainVersion: 0, dead: [],
       roomTemps: [], lastDay: dayIndex(START_T), warn: {}, relations: [], chatter: [], nextChat: START_T + 0.5,
     };
     const set = (x, y, t) => { if (inb(x, y)) s.terrain[idx(x, y)] = t; };
@@ -205,6 +209,7 @@ window.MMTI = window.MMTI || {};
     s.items.push({ id: s.nextId++, kind: 'wood', n: 60, x: 15, y: 15, age: 0 });
     s.items.push({ id: s.nextId++, kind: 'potato', n: 30, x: 16, y: 15, age: 0 });
     s.items.push({ id: s.nextId++, kind: 'meal', n: 4, x: 17, y: 15, age: 0 });
+    s.items.push({ id: s.nextId++, kind: 'medicine', n: 5, x: 18, y: 15, age: 0 });
 
     const taken = new Set(s.things.map((th) => idx(th.x, th.y)));
     for (const i of s.zones.stock) taken.add(i);
@@ -242,6 +247,7 @@ window.MMTI = window.MMTI || {};
         + '• Fires and heaters burn wood. Food spoils, more slowly indoors and in the cold.\n'
         + '• Winter comes in 12 days: crops stop growing and the heater burns wood day and night.\n'
         + '• Each colonist has two traits and people they care about. Their mood rises and falls with how they are treated; a miserable colonist may stop working for a while.\n'
+        + '• Raiders and fires will come. Draft colonists to fight or move them by hand (right-click), shelter behind doors, and rescue anyone who goes down. Wounds bleed until a doctor tends them.\n'
         + '• Space pauses. Keys 1, 2, 3 change speed.\n\n'
         + 'Things will go wrong. Handle them however you like. The Archivist, in the small hut, will tell you what she has noticed about you.',
     });
@@ -515,7 +521,7 @@ window.MMTI = window.MMTI || {};
     return got;
   }
   function counts(s) {
-    const c = { wood: 0, berries: 0, potato: 0, meal: 0 };
+    const c = { wood: 0, berries: 0, potato: 0, meal: 0, medicine: 0 };
     for (const it of s.items) c[it.kind] += it.n;
     for (const col of s.colonists) if (col.carry && !col.away) c[col.carry.kind] += col.carry.n;
     return c;
@@ -541,7 +547,8 @@ window.MMTI = window.MMTI || {};
   }
 
   // ---------- movement ----------
-  function bfs(sx, sy, isGoal, ignoreStart) {
+  function bfs(sx, sy, isGoal, ignoreStart, blockGrid) {
+    const blk = blockGrid || blocked;
     const prev = new Int32Array(W * H).fill(-2);
     const start = idx(sx, sy);
     const q = [start];
@@ -559,8 +566,8 @@ window.MMTI = window.MMTI || {};
         const nx = cx + dx, ny = cy + dy;
         if (!inb(nx, ny)) continue;
         const n = idx(nx, ny);
-        if (prev[n] !== -2 || blocked[n]) continue;
-        if (dx && dy && (blocked[idx(cx + dx, cy)] || blocked[idx(cx, cy + dy)])) continue;
+        if (prev[n] !== -2 || blk[n]) continue;
+        if (dx && dy && (blk[idx(cx + dx, cy)] || blk[idx(cx, cy + dy)])) continue;
         prev[n] = cur;
         q.push(n);
       }
@@ -569,7 +576,8 @@ window.MMTI = window.MMTI || {};
   }
 
   const tileOf = (c) => [Math.round(c.x), Math.round(c.y)];
-  const health = (c) => 1 - Math.min(0.85, 0.9 * c.cold + 0.9 * c.weak);
+  const pain = (c) => (c.injuries || []).reduce((a, i) => a + i.sev * (i.tended ? 0.5 : 1), 0);
+  const health = (c) => 1 - Math.min(0.95, 0.9 * c.cold + 0.9 * c.weak + pain(c) + (1 - (c.blood == null ? 1 : c.blood)) * 0.9);
   const workFactor = (c) => (0.35 + 0.65 * health(c)) * (has(c, 'hardworker') ? 1.2 : has(c, 'lazy') ? 0.8 : 1) * (c.mood < 25 ? 0.75 : c.mood > 70 ? 1.1 : 1);
   const plantSkill = (c) => c.skills.plants * (has(c, 'greenthumb') ? 1.4 : 1);
 
@@ -620,6 +628,11 @@ window.MMTI = window.MMTI || {};
   }
 
   function releaseRes(s, c) {
+    for (const o of s.colonists) {
+      if (o.resTend === c.id) o.resTend = null;
+      if (o.resRescue === c.id) o.resRescue = null;
+      if (o.carriedBy === c.id) o.carriedBy = null;
+    }
     for (const th of s.things) { if (th.res === c.id) th.res = null; if (th.resF === c.id) th.resF = null; if (th.resD === c.id) th.resD = null; }
     for (const it of s.items) if (it.res === c.id) it.res = null;
     for (const [k, v] of growRes) if (v === c.id) growRes.delete(k);
@@ -659,7 +672,7 @@ window.MMTI = window.MMTI || {};
     const tg = tgPath.tg;
     c.path = itPath.path;
     itPath.tg.res = c.id;
-    return { kind, targetId: tg.id != null ? tg.id : null, tile: tg.tile != null ? tg.tile : null, itemId: itPath.tg.id, need: amountFor(tg, itPath.tg), stage: 'fetch', work: 0, ...extra };
+    return { kind, targetId: tg.id != null ? tg.id : null, tile: tg.tile != null ? tg.tile : null, itemId: itPath.tg.id, need: amountFor(tg, itPath.tg), stage: 'fetch', work: 0, ...extra, _tg: tg };
   }
   function goJob(s, c, kind, targets, extra) {
     const res = pathTo(tileOf(c), targets);
@@ -673,6 +686,20 @@ window.MMTI = window.MMTI || {};
   function workJob(s, c, type) {
     const cnt = counts(s);
     switch (type) {
+      case 'doctor': {
+        const safe = (o) => !enemiesNear(s, o.x, o.y, 7).length;
+        const downed = s.colonists.filter((o) => o !== c && o.downed && !o.away && !o.carriedBy && !o.resRescue && !inBed(o) && safe(o) && freeBedFor(s, o));
+        let j = goJob(s, c, 'rescue', downed.map((o) => ({ x: Math.round(o.x), y: Math.round(o.y), pid: o.id })));
+        if (j) { j.patientId = j._tg.pid; colonistById(s, j.patientId).resRescue = c.id; return j; }
+        const patients = s.colonists.filter((o) => !o.away && !o.carriedBy && !o.resTend && (o.injuries || []).some((i) => !i.tended)
+          && (o.downed || (o.job && o.job.kind === 'bedrest' && o.job.stage === 'work')) && (o !== c || !o.downed));
+        const targets = patients.map((o) => ({ x: Math.round(o.x), y: Math.round(o.y), pid: o.id, self: o === c }));
+        if (!targets.length) return null;
+        j = cnt.medicine > 0 ? fetchJob(s, c, 'tend', targets, (it) => it.kind === 'medicine', () => 1) : null;
+        if (!j) j = goJob(s, c, 'tend', targets);
+        if (j) { j.patientId = j._tg.pid; colonistById(s, j.patientId).resTend = c.id; }
+        return j;
+      }
       case 'build': {
         const ready = s.things.filter((th) => th.bp && !th.res && (th.delivered || 0) >= DEFS[th.type].cost);
         let j = goJob(s, c, 'build', ready);
@@ -747,6 +774,50 @@ window.MMTI = window.MMTI || {};
   }
 
   function assignJob(s, c) {
+    if (c.drafted) {
+      if (c.moveTo) {
+        const [mx, my] = c.moveTo;
+        c.moveTo = null;
+        const j = goJob(s, c, 'drafted', [{ x: mx, y: my, exact: true }]);
+        if (j) return j;
+      }
+      return { kind: 'drafted', targetId: null, stage: 'work', work: 0 };
+    }
+    // While raiders are on the map, undrafted colonists shelter indoors; fighting is a choice made by drafting.
+    if ((s.raiders || []).length) {
+      const [cx, cy] = tileOf(c);
+      const here = roomAt(cx, cy);
+      if (!here || here.outdoors) {
+        const indoor = [];
+        for (const r of rooms) if (!r.outdoors) for (const t of r.tiles) if (!blocked[t]) indoor.push({ tile: t });
+        const j = goJob(s, c, 'flee', indoor);
+        if (j) return j;
+      } else {
+        const inRoom = (x, y) => roomAt(Math.round(x), Math.round(y)) === here;
+        if ((c.injuries || []).some((i) => !i.tended && i.bleed > 0)) {
+          const b = freeBedFor(s, c);
+          if (b && inRoom(b.x, b.y)) { c.bed = b.id; const j = goJob(s, c, 'bedrest', [{ id: b.id, x: b.x, y: b.y, exact: true }]); if (j) return j; }
+        }
+        if (c.prio.doctor > 0) {
+          const pts = s.colonists.filter((o) => o !== c && !o.away && !o.resTend && inRoom(o.x, o.y) && o.injuries.some((i) => !i.tended)
+            && (o.downed || (o.job && o.job.kind === 'bedrest' && o.job.stage === 'work')));
+          const j = goJob(s, c, 'tend', pts.map((o) => ({ x: Math.round(o.x), y: Math.round(o.y), pid: o.id })));
+          if (j) { j.patientId = j._tg.pid; colonistById(s, j.patientId).resTend = c.id; return j; }
+        }
+        return { kind: 'hide', targetId: null, stage: 'work', work: 0 };
+      }
+    }
+    const fire = homeFires(s);
+    if (fire.length) {
+      const j = goJob(s, c, 'firefight', fire.map((i) => ({ x: i % W, y: (i / W) | 0, fi: i })));
+      if (j) { j.fire = j._tg.fi; return j; }
+    }
+    if ((c.injuries || []).some((i) => !i.tended && i.bleed > 0)) {
+      const bed = c.bed != null ? byId.get(c.bed) : null;
+      const b = bed && !bed.bp ? bed : freeBedFor(s, c);
+      if (b) { c.bed = b.id; const j = goJob(s, c, 'bedrest', [{ id: b.id, x: b.x, y: b.y, exact: true }]); if (j) return j; }
+      return { kind: 'bedrest', targetId: null, stage: 'work', work: 0 };
+    }
     if (c.food < 0.3) { const j = eatJob(s, c); if (j) return j; }
     if (c.rest < 0.15 || (isNight(s) && c.rest < 0.95)) {
       let bed = c.bed != null ? byId.get(c.bed) : null;
@@ -773,6 +844,11 @@ window.MMTI = window.MMTI || {};
       const j = th && goJob(s, c, c.duty.kind, [th]);
       if (j) return j;
       c.duty = null;
+    }
+    // Someone down or bleeding is an emergency: anyone allowed to doctor handles it before other work.
+    if (c.prio.doctor > 0 && s.colonists.some((o) => o !== c && !o.away && (o.downed || o.injuries.some((i) => !i.tended && i.bleed > 0)))) {
+      const j = workJob(s, c, 'doctor');
+      if (j) return j;
     }
     for (let p = 1; p <= 4; p++) {
       for (const w of WORK_TYPES) {
@@ -804,6 +880,10 @@ window.MMTI = window.MMTI || {};
     if (j.kind === 'haul') {
       const spot = bfs(from[0], from[1], (x, y) => stockSet.has(idx(x, y)) && holdable(s, idx(x, y), kind));
       if (spot) { res = { path: spot.path }; j.tile = idx(spot.end[0], spot.end[1]); }
+    } else if (j.kind === 'tend') {
+      const pt = colonistById(s, j.patientId);
+      res = pt ? pathTo(from, [{ x: Math.round(pt.x), y: Math.round(pt.y) }]) : null;
+      if (pt && Math.round(pt.x) === from[0] && Math.round(pt.y) === from[1]) res = { path: [] };
     } else if (j.kind === 'eat') {
       const tables = s.things.filter((th) => th.type === 'table' && !th.bp);
       const t = pathTo(from, tables);
@@ -980,6 +1060,67 @@ window.MMTI = window.MMTI || {};
           dropItem(s, 'wood', wood, th.x, th.y);
         }
         return;
+      case 'drafted':
+        if (!c.drafted) endJob(s, c);
+        return;
+      case 'hide':
+      case 'flee':
+        j.work += dt;
+        if (j.work >= 0.3 || !(s.raiders || []).length) endJob(s, c);
+        return;
+      case 'firefight': {
+        const f = s.fires[j.fire];
+        if (!f) return endJob(s, c);
+        f.i -= dt * 1.6 * wf;
+        if (f.i <= 0) { delete s.fires[j.fire]; endJob(s, c); }
+        return;
+      }
+      case 'bedrest': {
+        c.sleeping = true;
+        c.rest = Math.min(1, c.rest + dt / 9);
+        j.work += dt;
+        const bleeding = c.injuries.some((i) => !i.tended && i.bleed > 0);
+        // Nobody came: tend your own wounds, less well.
+        if (bleeding && j.work > 0.6 && !c.resTend && c.prio.doctor > 0) {
+          j.self = (j.self || 0) + dt;
+          if (j.self >= 0.6) for (const i of c.injuries) if (!i.tended) { i.tended = true; i.med = false; i.sev *= 1.15; }
+        }
+        if ((!bleeding && j.work > 1) || j.work > 12 || c.food < 0.12) endJob(s, c);
+        return;
+      }
+      case 'rescue': {
+        const pt = colonistById(s, j.patientId);
+        if (!pt || !pt.downed) return endJob(s, c);
+        if (!j.carrying) {
+          const bed = freeBedFor(s, pt);
+          if (!bed) return endJob(s, c);
+          const res = pathTo(tileOf(c), [{ x: bed.x, y: bed.y, exact: true }]);
+          if (!res) return endJob(s, c);
+          pt.carriedBy = c.id;
+          pt.bed = bed.id;
+          j.carrying = true;
+          c.path = res.path;
+          j.stage = 'walk';
+          return;
+        }
+        pt.carriedBy = null;
+        const bed = byId.get(pt.bed);
+        if (bed) { pt.x = bed.x; pt.y = bed.y; }
+        return endJob(s, c);
+      }
+      case 'tend': {
+        const pt = colonistById(s, j.patientId);
+        if (!pt || !pt.injuries.some((i) => !i.tended)) return endJob(s, c);
+        j.work += dt * (c.skills.doctor || 1) * wf;
+        if (j.work >= 0.5) {
+          const med = !!(c.carry && c.carry.kind === 'medicine');
+          for (const i of pt.injuries) if (!i.tended) { i.tended = true; i.med = med; }
+          if (med) c.carry = null;
+          if (pt !== c) addMemory(s, pt, 'tended', `${c.name} tended my wounds`, 4, 24);
+          endJob(s, c);
+        }
+        return;
+      }
       case 'inspect': {
         const inc = s.incident;
         if (!th || !inc || inc.reportIn) { c.duty = null; return endJob(s, c); }
@@ -992,6 +1133,18 @@ window.MMTI = window.MMTI || {};
   }
 
   function stepColonist(s, c, dt) {
+    if (c.carriedBy) {
+      const r = colonistById(s, c.carriedBy);
+      if (r && !r.away) { c.x = r.x; c.y = r.y; } else c.carriedBy = null;
+    }
+    if (bodyStep(s, c, dt)) return;
+    if (c.downed) {
+      c.food = Math.max(0, c.food - dt / 20);
+      c.rest = Math.min(1, c.rest + dt / 12);
+      if (c.food <= 0) c.weak = Math.min(1, c.weak + dt * 0.02);
+      moodStep(s, c, dt);
+      return;
+    }
     if (!c.sleeping) c.rest = Math.max(0, c.rest - dt / 18);
     c.food = Math.max(0, c.food - dt / 20);
     const [x, y] = tileOf(c);
@@ -1037,6 +1190,12 @@ window.MMTI = window.MMTI || {};
     const day = dayIndex(s.t);
     if (day === s.lastDay) return;
     s.lastDay = day;
+    for (const [k, until] of Object.entries(s.burnt || {})) {
+      if (s.t < until) continue;
+      if (s.terrain[k] === T.DIRT) s.terrain[k] = T.GRASS;
+      delete s.burnt[k];
+      s.terrainVersion = (s.terrainVersion || 0) + 1;
+    }
     const cal = calendar(s.t);
     if (cal.day === 1) {
       const notes = {
@@ -1085,6 +1244,317 @@ window.MMTI = window.MMTI || {};
     }
   }
 
+  // ---------- danger: injuries, death, raids, fire ----------
+  const colonistById = (s, id) => s.colonists.find((o) => o.id === id);
+  function inBed(c) {
+    const th = structAt[idx(Math.round(c.x), Math.round(c.y))];
+    return !!(th && th.type === 'bed' && !th.bp);
+  }
+  function freeBedFor(s, c) {
+    const own = c.bed != null ? byId.get(c.bed) : null;
+    if (own && !own.bp) return own;
+    const owned = new Set(s.colonists.filter((o) => o !== c && o.bed != null).map((o) => o.bed));
+    return s.things.find((th) => th.type === 'bed' && !th.bp && !owned.has(th.id)) || null;
+  }
+  function enemiesNear(s, x, y, r) { return (s.raiders || []).filter((e) => Math.hypot(e.x - x, e.y - y) <= r); }
+
+  function injure(s, c, label, sev, bleed) {
+    const same = c.injuries.find((i) => i.label === label && !i.tended);
+    if (same && label === 'Burn') { same.sev = Math.min(0.9, same.sev + sev); return; }
+    c.injuries.push({ label, sev, bleed, tended: false, med: false });
+  }
+
+  function bodyStep(s, c, dt) {
+    const bleed = c.injuries.reduce((a, i) => a + (i.tended ? 0 : i.bleed), 0);
+    if (bleed > 0) c.blood = Math.max(0, c.blood - bleed * dt);
+    else c.blood = Math.min(1, c.blood + dt * 0.03);
+    const resting = c.sleeping || c.downed;
+    for (const i of c.injuries) i.sev -= dt * (i.tended ? (i.med ? 0.03 : 0.015) : 0.004) * (resting ? 1.5 : 1);
+    c.injuries = c.injuries.filter((i) => i.sev > 0.01);
+    const hh = health(c);
+    if (!c.downed && (hh < 0.2 || c.blood < 0.35)) {
+      c.downed = true;
+      c.drafted = false;
+      endJob(s, c);
+      letter(s, { kind: 'threat', title: `${c.name} is down`, body: `${c.name} collapsed and cannot move. ${c.injuries.some((i) => !i.tended && i.bleed > 0) ? 'They are bleeding and need a doctor soon. ' : ''}Someone has to carry them to a bed.`, focus: { colonistId: c.id } });
+    } else if (c.downed && hh >= 0.3 && c.blood >= 0.45) c.downed = false;
+    c.coldH = c.cold >= 1 ? (c.coldH || 0) + dt : 0;
+    c.starveH = c.weak >= 1 ? (c.starveH || 0) + dt : 0;
+    const cause = c.blood <= 0.05 ? 'bled to death' : c.coldH > 6 ? 'froze to death' : c.starveH > 36 ? 'starved to death' : null;
+    if (cause) { die(s, c, cause); return true; }
+    return false;
+  }
+
+  function die(s, c, cause) {
+    endJob(s, c);
+    const [x, y] = tileOf(c);
+    for (const r of relationsOf(s, c)) {
+      const o = r.other;
+      if (r.kind === 'partner') addMemory(s, o, 'lost', `Lost ${c.name}`, -25, 24 * 7);
+      else if (r.kind === 'sibling') addMemory(s, o, 'lost', `Lost ${c.name}`, -18, 24 * 6);
+      else if (r.kind === 'friend') addMemory(s, o, 'lost', `Lost ${c.name}`, -12, 24 * 4);
+    }
+    s.colonists.splice(s.colonists.indexOf(c), 1);
+    for (const o of s.colonists) {
+      if (!o.memories.some((m) => m.key === 'lost')) addMemory(s, o, 'death', `${c.name} died`, -8, 72);
+      if (o.carriedBy === c.id) o.carriedBy = null;
+    }
+    s.relations = s.relations.filter((r) => r.a !== c.id && r.b !== c.id);
+    const i = idx(x, y);
+    if (!structAt[i] && !blocked[i]) { makeThing(s, 'grave', x, y, { name: c.name }); reindex(s); }
+    s.dead.push({ name: c.name, t: r2(s.t), cause });
+    letter(s, { kind: 'threat', title: `${c.name} has died`, body: `${c.name} ${cause}.${s.colonists.length ? ' The others will feel this for days.' : ''}` });
+    if (!s.colonists.length) letter(s, { kind: 'threat', title: 'The colony has fallen', body: 'Nobody is left. Open the menu to start a new colony. What the Archivist has learned about you is kept.' });
+  }
+
+  function losClear(x0, y0, x1, y1) {
+    let x = Math.round(x0), y = Math.round(y0);
+    const tx = Math.round(x1), ty = Math.round(y1);
+    const dx = Math.abs(tx - x), dy = -Math.abs(ty - y), sx = x < tx ? 1 : -1, sy = y < ty ? 1 : -1;
+    let err = dx + dy;
+    while (x !== tx || y !== ty) {
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x += sx; }
+      if (e2 <= dx) { err += dx; y += sy; }
+      if (x === tx && y === ty) break;
+      const th = structAt[idx(x, y)];
+      if (th && !th.bp && DEFS[th.type].boundary) return false;
+    }
+    return true;
+  }
+  function inCover(x, y) {
+    const [tx, ty] = [Math.round(x), Math.round(y)];
+    return DIRS4.some(([dx, dy]) => { const th = inb(tx + dx, ty + dy) && structAt[idx(tx + dx, ty + dy)]; return th && !th.bp && DEFS[th.type].blocks; });
+  }
+
+  function combatStep(s, dt) {
+    s.shots = (s.shots || []).filter((sh) => sh.until > s.t);
+    if (!s.raiders.length) return;
+    const shoot = (a, targets, hitFn, range) => {
+      a.cd = Math.max(0, (a.cd || 0) - dt);
+      if (a.cd > 0) return;
+      let best = null, bd = range;
+      for (const t of targets) {
+        const d = Math.hypot(t.x - a.x, t.y - a.y);
+        if (d <= bd && losClear(a.x, a.y, t.x, t.y)) { bd = d; best = t; }
+      }
+      if (!best) return;
+      a.cd = 0.1;
+      const skill = a.hp != null ? 1 : 0.5 + 0.5 * health(a);
+      const base = a.hp != null ? 0.5 : 0.66;
+      const chance = Math.max(0.1, Math.min(0.85, (base - 0.035 * bd - (inCover(best.x, best.y) ? 0.3 : 0)) * skill));
+      const hit = Math.random() < chance;
+      s.shots.push({ x0: a.x, y0: a.y, x1: best.x, y1: best.y, hit, until: s.t + 0.04, side: a.hp != null ? 'raid' : 'col' });
+      if (hit) hitFn(best);
+    };
+    for (const c of s.colonists) {
+      if (c.away || c.downed || !c.drafted) continue;
+      shoot(c, s.raiders, (r) => { r.hp -= rand(0.25, 0.4); }, 7);
+    }
+    const exposed = s.colonists.filter((c) => !c.away && !c.downed);
+    for (const r of s.raiders) {
+      if (r.hp <= 0) continue;
+      shoot(r, exposed, (c) => { const sev = rand(0.08, 0.18); injure(s, c, 'Arrow wound', sev, sev * 0.45); s.raid.wounded = (s.raid.wounded || 0) + 1; }, 7);
+    }
+  }
+
+  let raidBlocked = null;
+  function raidGrid(s) {
+    raidBlocked = new Uint8Array(blocked);
+    for (const th of s.things) if (th.type === 'door' && !th.bp) raidBlocked[idx(th.x, th.y)] = 1;
+  }
+
+  function raiderStep(s, r, dt) {
+    if (r.path && r.path.length) {
+      const next = r.path[0];
+      if (raidBlocked[idx(next[0], next[1])]) r.path = null;
+      else {
+        let budget = 34 * dt;
+        while (budget > 0 && r.path.length) {
+          const [tx, ty] = r.path[0];
+          const dx = tx - r.x, dy = ty - r.y, d = Math.hypot(dx, dy);
+          if (dx) r.facing = Math.sign(dx);
+          if (d <= budget) { r.x = tx; r.y = ty; budget -= d; r.path.shift(); } else { r.x += (dx / d) * budget; r.y += (dy / d) * budget; budget = 0; }
+        }
+      }
+    }
+    if (r.state !== 'flee' && (r.hp < 0.5 || s.t >= s.raid.leaveAt)) { r.state = 'flee'; r.path = null; }
+    const [x, y] = [Math.round(r.x), Math.round(r.y)];
+    if (r.state === 'flee') {
+      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) {
+        if (r.carry) s.raid.stolen[r.carry.kind] = (s.raid.stolen[r.carry.kind] || 0) + r.carry.n;
+        r.gone = true;
+        s.raid.fled++;
+        return;
+      }
+      if (!r.path || !r.path.length) {
+        const res = bfs(x, y, (tx, ty) => tx === 0 || ty === 0 || tx === W - 1 || ty === H - 1, false, raidBlocked);
+        r.path = res ? res.path : [];
+      }
+      return;
+    }
+    const visible = s.colonists.some((c) => !c.away && !c.downed && Math.hypot(c.x - r.x, c.y - r.y) <= 7 && losClear(r.x, r.y, c.x, c.y));
+    if (visible && !r.carry) { r.path = null; return; }
+    if (r.path && r.path.length) return;
+    const it = itemAt.get(idx(x, y));
+    if (it && !r.carry) {
+      const kind = it.kind;
+      r.carry = { kind, n: takeItem(s, it, 30) };
+      r.state = 'flee';
+      return;
+    }
+    const loot = s.items.filter((i) => i.kind !== 'wood' || s.items.every((o) => o.kind === 'wood'));
+    const res = bfs(x, y, (tx, ty) => loot.some((i) => i.x === tx && i.y === ty), false, raidBlocked);
+    if (res) r.path = res.path;
+    else {
+      const target = s.colonists.find((c) => !c.away && !c.downed);
+      const toward = target && bfs(x, y, (tx, ty) => Math.hypot(tx - target.x, ty - target.y) < 5, false, raidBlocked);
+      r.path = toward ? toward.path : [];
+      if (!toward) r.state = 'flee';
+    }
+  }
+
+  function raidTick(s, dt) {
+    const raid = s.raid;
+    if (!raid) return;
+    if (!raid.spawned) {
+      if (s.t < raid.arriveAt) return;
+      raid.spawned = true;
+      raid.leaveAt = s.t + 8;
+      const spots = [];
+      for (let k = 0; k < H; k++) {
+        const [x, y] = raid.edge === 'east' ? [W - 1, k] : raid.edge === 'north' ? [Math.min(W - 1, k + 8), 0] : [Math.min(W - 1, k + 8), H - 1];
+        if (!blocked[idx(x, y)]) spots.push([x, y]);
+      }
+      for (let n = 0; n < raid.n; n++) {
+        const [x, y] = spots[Math.floor(Math.random() * spots.length)];
+        s.raiders.push({ id: s.nextId++, x, y, hp: 1, state: 'raid', path: null, cd: rand(0, 0.1), facing: -1 });
+      }
+      letter(s, { kind: 'threat', title: 'The raiders are here', body: `${raid.n} raiders have reached the colony. Anyone outside is in danger.` });
+      return;
+    }
+    raidGrid(s);
+    for (const r of s.raiders) {
+      if (r.hp <= 0) {
+        if (r.carry) dropItem(s, r.carry.kind, r.carry.n, Math.round(r.x), Math.round(r.y));
+        if (Math.random() < 0.5) dropItem(s, 'medicine', 1 + Math.floor(Math.random() * 2), Math.round(r.x), Math.round(r.y));
+        r.gone = true;
+        raid.killed++;
+        continue;
+      }
+      raiderStep(s, r, dt);
+    }
+    s.raiders = s.raiders.filter((r) => !r.gone);
+    if (!s.raiders.length) {
+      const stolen = Object.entries(raid.stolen).map(([k, n]) => `${n} ${ITEMS[k].label.toLowerCase()}`);
+      letter(s, {
+        kind: raid.killed ? 'good' : 'info', title: 'The raiders are gone',
+        body: `${raid.killed ? `${raid.killed} raider${raid.killed > 1 ? 's' : ''} fell. ` : ''}${raid.fled ? `${raid.fled} got away${stolen.length ? ` with ${stolen.join(' and ')}` : ''}. ` : ''}${raid.killed ? 'They left some medicine behind.' : ''}`.trim() || 'They left.',
+      });
+      if (M.observe && M.observe.logDecision) {
+        M.observe.logDecision('raid-outcome', {
+          raiders: raid.n, killed: raid.killed, fled: raid.fled, stolen: raid.stolen, wounded: raid.wounded || 0,
+          drafted: raid.drafted || [], deaths: s.dead.filter((d) => d.t >= raid.startT).map((d) => d.name),
+        }, s);
+      }
+      s.raid = null;
+    }
+  }
+
+  function startRaid(s) {
+    const n = Math.max(2, Math.round(s.colonists.length * 0.7));
+    const edge = pick(['east', 'north', 'south']);
+    s.raid = { startT: s.t, arriveAt: s.t + 1.5, n, edge, spawned: false, leaveAt: null, killed: 0, fled: 0, stolen: {}, drafted: [] };
+    letter(s, {
+      kind: 'threat', title: 'Raiders are coming',
+      body: `Scouts spotted ${n} raiders coming from the ${edge}. They will be here in about 1.5 hours and will take whatever supplies they can reach.
+
+`
+        + 'Draft colonists to fight (select a colonist, then Draft; right-click to move them; standing next to a wall gives cover), bring everyone indoors behind doors, or keep working and let them take what they want.',
+    });
+  }
+
+  function flammable(s, i, dry) {
+    const th = structAt[i];
+    if (th && !th.bp && FLAMMABLE.has(th.type)) return true;
+    if (itemAt.has(i)) return true;
+    const g = s.zones.grow[i];
+    if (g && g.sown) return true;
+    return dry && s.terrain[i] === T.GRASS && !(s.burnt && s.burnt[i]);
+  }
+  function homeFires(s) {
+    const keys = Object.keys(s.fires || {});
+    if (!keys.length) return [];
+    const home = s.things.filter((th) => !DEFS[th.type].natural && th.type !== 'grave');
+    return keys.map(Number).filter((i) => {
+      const x = i % W, y = (i / W) | 0;
+      return home.some((th) => Math.abs(th.x - x) + Math.abs(th.y - y) <= 10) || s.zones.stock.includes(i);
+    });
+  }
+  function fireStep(s, dt) {
+    const keys = Object.keys(s.fires || {});
+    if (!keys.length) return;
+    const dry = outdoorTemp(s) >= 15;
+    let changed = false;
+    for (const k of keys) {
+      const i = Number(k), f = s.fires[k];
+      if (!f) continue;
+      f.i = Math.min(1.5, f.i + dt * 0.6);
+      f.age += dt;
+      const x = i % W, y = (i / W) | 0;
+      for (const [dx, dy] of DIRS4) {
+        if (!inb(x + dx, y + dy)) continue;
+        const n = idx(x + dx, y + dy);
+        const grassOnly = !structAt[n] && !itemAt.has(n) && !(s.zones.grow[n] && s.zones.grow[n].sown);
+        if (!s.fires[n] && flammable(s, n, dry) && Math.random() < dt * 0.8 * f.i * (grassOnly ? 0.4 : 1)) s.fires[n] = { i: 0.2, age: 0 };
+      }
+      if (f.age > 1 && !f.burned) {
+        f.burned = true;
+        const th = structAt[i];
+        if (th && !th.bp && FLAMMABLE.has(th.type)) { s.things.splice(s.things.indexOf(th), 1); changed = true; }
+        const it = itemAt.get(i);
+        if (it) { s.items.splice(s.items.indexOf(it), 1); itemAt.delete(i); }
+        const g = s.zones.grow[i];
+        if (g) { g.sown = false; g.growth = 0; }
+        if (s.terrain[i] === T.GRASS) {
+          s.terrain[i] = T.DIRT;
+          s.burnt = s.burnt || {};
+          s.burnt[i] = s.t + 72;
+          s.terrainVersion = (s.terrainVersion || 0) + 1;
+        }
+      }
+      if (f.age > 1.4) delete s.fires[k];
+    }
+    if (changed) { reindex(s); recomputeRooms(s); }
+    for (const c of s.colonists) {
+      if (c.away) continue;
+      if (s.fires[idx(Math.round(c.x), Math.round(c.y))]) injure(s, c, 'Burn', 0.25 * dt, 0);
+    }
+    if (!Object.keys(s.fires).length) letter(s, { kind: 'info', title: 'The fire is out', body: 'The fire has burned out or been put out.' });
+  }
+  function startFire(s) {
+    const dry = outdoorTemp(s) >= 15;
+    const cands = [];
+    for (const th of s.things) {
+      if ((th.type === 'campfire' || th.type === 'stove') && th.lit) {
+        for (const [dx, dy] of DIRS8) { const x = th.x + dx, y = th.y + dy; if (inb(x, y) && flammable(s, idx(x, y), dry)) cands.push([x, y, `a spark from the ${DEFS[th.type].label.toLowerCase()}`]); }
+      }
+      if (th.type === 'tree' && dry) cands.push([th.x, th.y, 'lightning striking a tree']);
+    }
+    if (!cands.length) return false;
+    const [x, y, why] = pick(cands);
+    s.fires[idx(x, y)] = { i: 0.4, age: 0 };
+    letter(s, { kind: 'threat', title: 'Fire!', body: `A fire started from ${why}. Colonists drop what they are doing to fight fires near home; fires spread through dry grass, crops, doors, beds, and stored goods.`, focus: { tile: idx(x, y) } });
+    return true;
+  }
+
+  function threatTick(s) {
+    if (s.t < (s.story.nextThreatAt || Infinity) || s.incident || s.caravan || s.raid || Object.keys(s.fires).length) return;
+    if (s.colonists.filter((c) => !c.away).length < 2) { s.story.nextThreatAt = s.t + 12; return; }
+    const ok = Math.random() < 0.6 ? (startRaid(s), true) : startFire(s) || (startRaid(s), true);
+    if (ok) s.story.nextThreatAt = s.t + rand(4, 6) * 24;
+  }
+
   // ---------- incidents ----------
   function obs(name, inc, extra) {
     const o = M.observe;
@@ -1103,7 +1573,7 @@ window.MMTI = window.MMTI || {};
   function caravanViable(s) { return !s.caravan && home(s).filter((c) => health(c) > 0.5).length >= 3; }
 
   function storyTick(s) {
-    if (s.incident || s.caravan || s.t < s.story.nextAt) return;
+    if (s.incident || s.caravan || s.raid || Object.keys(s.fires || {}).length || s.t < s.story.nextAt) return;
     const ok = { heating: heatingViable(s), caravan: caravanViable(s) };
     let cell;
     if (M.review) {
@@ -1495,6 +1965,44 @@ window.MMTI = window.MMTI || {};
         if (inc && inc.kind === 'caravan' && tg.kind === 'world' && tg.what === 'blockage') consult(s, inc, 'blockage');
         return ok();
       }
+      case 'draft': {
+        const c = colonistById(s, cmd.id);
+        if (!c || c.away || c.downed) return fail('They cannot be drafted right now');
+        c.drafted = !!cmd.on;
+        c.moveTo = null;
+        endJob(s, c);
+        if (s.raid && c.drafted && !s.raid.drafted.includes(c.name)) s.raid.drafted.push(c.name);
+        if (s.raid && M.observe && M.observe.logDecision) M.observe.logDecision('draft', { name: c.name, on: c.drafted, raidArrived: s.raid.spawned, traits: c.traits, mood: Math.round(c.mood) }, s);
+        return ok();
+      }
+      case 'move': {
+        const c = colonistById(s, cmd.id);
+        if (!c || !c.drafted) return fail('Draft a colonist to move them by hand');
+        if (!inb(cmd.x, cmd.y) || blocked[idx(cmd.x, cmd.y)]) return fail('They cannot stand there');
+        c.moveTo = [cmd.x, cmd.y];
+        endJob(s, c);
+        return ok();
+      }
+      case 'rescue': {
+        const pt = colonistById(s, cmd.id);
+        if (!pt || !pt.downed || pt.carriedBy) return fail('Nobody to rescue');
+        if (!freeBedFor(s, pt)) return fail('There is no free bed');
+        const helpers = s.colonists.filter((o) => o !== pt && !o.away && !o.downed);
+        if (!helpers.length) return fail('Nobody can help');
+        const from = [Math.round(pt.x), Math.round(pt.y)];
+        helpers.sort((a, b) => Math.hypot(a.x - from[0], a.y - from[1]) - Math.hypot(b.x - from[0], b.y - from[1]));
+        const r = helpers[0];
+        endJob(s, r);
+        const j = goJob(s, r, 'rescue', [{ x: from[0], y: from[1], pid: pt.id }]);
+        if (!j) return fail('They cannot reach them');
+        delete j._tg;
+        j.patientId = pt.id;
+        pt.resRescue = r.id;
+        r.drafted = false;
+        r.job = j;
+        if (M.observe && M.observe.logDecision) M.observe.logDecision('rescue-order', { rescuer: r.name, patient: pt.name, enemiesNear: enemiesNear(s, pt.x, pt.y, 8).length, rescuerTraits: r.traits, relation: (relationsOf(s, r).find((x) => x.other === pt) || {}).kind || null }, s);
+        return ok({ rescuer: r.name });
+      }
       case 'caravan-send': {
         if (!inc || inc.kind !== 'caravan' || inc.stage !== 'request') return fail();
         const eligible = home(s).filter((c) => health(c) > 0.5);
@@ -1555,7 +2063,10 @@ window.MMTI = window.MMTI || {};
     if (s.weather.until != null && s.t >= s.weather.until) s.weather = { override: null, label: null, until: null };
     burnFuel(s, dt);
     updateTemps(s, dt);
-    for (const c of s.colonists) if (!c.away) stepColonist(s, c, dt);
+    for (const c of s.colonists.slice()) if (!c.away) stepColonist(s, c, dt);
+    raidTick(s, dt);
+    combatStep(s, dt);
+    fireStep(s, dt);
     natureStep(s, dt);
     spoilItems(s, dt);
     dailyTick(s);
@@ -1567,6 +2078,7 @@ window.MMTI = window.MMTI || {};
       else caravanTick(s, inc, dt);
     }
     storyTick(s);
+    threatTick(s);
   }
 
   function init(s, loaded) {
@@ -1586,6 +2098,18 @@ window.MMTI = window.MMTI || {};
     }
     if (!s.relations) defaultRelations(s);
     if (!s.chatter) s.chatter = [];
+    if (!s.raiders) s.raiders = [];
+    if (!s.fires) s.fires = {};
+    if (!s.dead) s.dead = [];
+    s.shots = [];
+    if (s.story.nextThreatAt == null) s.story.nextThreatAt = s.t + 3 * 24;
+    for (const c of s.colonists) {
+      if (!c.injuries) c.injuries = [];
+      if (c.blood == null) c.blood = 1;
+      if (c.prio.doctor == null) c.prio.doctor = 3;
+      if (c.skills.doctor == null) c.skills.doctor = 1;
+      c.carriedBy = null; c.resTend = null; c.resRescue = null;
+    }
     for (const c of s.colonists) {
       c.x = Math.round(c.x);
       c.y = Math.round(c.y);
@@ -1620,6 +2144,7 @@ window.MMTI = window.MMTI || {};
       return init(newColony(), false);
     },
     newColony() { init(newColony(), false); M.save(); },
+    dev: { startRaid: () => startRaid(S), startFire: () => startFire(S), injure: (c, sev) => injure(S, c, 'Arrow wound', sev, sev * 0.45) },
     SAVE_KEY,
     query: {
       outdoorTemp: () => outdoorTemp(S),
@@ -1637,6 +2162,8 @@ window.MMTI = window.MMTI || {};
       caravanCandidates: () => caravanCandidates(S),
       eligibleForCaravan: () => home(S).filter((c) => health(c) > 0.5),
       thoughts: (c) => thoughts(S, c),
+      raiders: () => S.raiders,
+      fires: () => S.fires,
       relationsOf: (c) => relationsOf(S, c),
       spoilFactor: (x, y) => { const t = tempAt(S, x, y), r = roomAt(x, y); return t < 0 ? 0 : r && !r.outdoors ? (t < 10 ? 0.4 : 1) : 1.5; },
       segHours,

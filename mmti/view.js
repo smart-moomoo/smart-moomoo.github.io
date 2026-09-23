@@ -14,7 +14,7 @@
   const SPEEDS = [1, 3, 6];
   const INK = '#171512';
   const ISSUES_URL = 'https://github.com/smart-moomoo/smart-moomoo.github.io/issues/new';
-  const WORK_LABEL = { build: 'Construct', repair: 'Repair', cook: 'Cook', grow: 'Grow', chop: 'Chop', haul: 'Haul' };
+  const WORK_LABEL = { doctor: 'Doctor', build: 'Construct', repair: 'Repair', cook: 'Cook', grow: 'Grow', chop: 'Chop', haul: 'Haul' };
   const ZONE_TOOLS = { stock: 'stock', grow: 'grow', clearzone: 'clear' };
 
   let hadSave = false;
@@ -142,6 +142,16 @@
       R(g, 1, 8, 14, 6, INK); R(g, 2, 9, 12, 3, '#f4efe4'); R(g, 3, 12, 10, 1, '#d8d0bf');
       R(g, 4, 6, 8, 4, INK); R(g, 5, 6, 6, 3, '#e0a040'); R(g, 6, 6, 2, 1, '#6fae47'); R(g, 9, 7, 1, 1, '#c0533a');
     }),
+    medicine: () => sprite('medicine', 16, 16, (g) => {
+      R(g, 3, 5, 10, 9, INK); R(g, 4, 6, 8, 7, '#f4efe4'); R(g, 7, 7, 2, 5, '#d8323c'); R(g, 5, 8, 6, 2, '#d8323c');
+    }),
+    grave: () => sprite('grave', 16, 16, (g) => {
+      R(g, 3, 11, 10, 4, '#6b4a2b'); R(g, 5, 2, 6, 10, INK); R(g, 6, 3, 4, 9, '#9b968c'); R(g, 6, 3, 4, 1, '#b3ada2'); R(g, 7, 5, 2, 1, '#6f6b64'); R(g, 7, 7, 2, 1, '#6f6b64');
+    }),
+    fire: (f) => sprite(`fire${f}`, 16, 16, (g) => {
+      const shapes = f ? [[3, 6, 4, 9], [7, 2, 4, 13], [11, 7, 3, 8]] : [[2, 7, 4, 8], [6, 4, 5, 11], [11, 5, 3, 10]];
+      for (const [x, y, w, hh] of shapes) { R(g, x, y, w, hh, '#ff7a2e'); R(g, x + 1, y + 3, Math.max(1, w - 2), hh - 3, '#ffd35a'); }
+    }),
     stockTile: () => sprite('stockTile', 16, 16, (g) => { g.fillStyle = 'rgba(255,214,110,.13)'; g.fillRect(0, 0, 16, 16); for (let i = 0; i < 16; i += 4) { R(g, i, 0, 2, 1, 'rgba(255,214,110,.5)'); R(g, 0, i, 1, 2, 'rgba(255,214,110,.5)'); } }),
     soil: () => sprite('soil', 16, 16, (g) => { R(g, 0, 0, 16, 16, '#6b4a2b'); for (let y = 1; y < 16; y += 4) { R(g, 0, y, 16, 1, '#5a3c20'); R(g, 0, y + 1, 16, 1, '#7a5934'); } }),
     crop: (stage) => sprite(`crop${stage}`, 16, 16, (g) => {
@@ -181,6 +191,8 @@
     });
   }
 
+  const RAIDER_LOOK = { shirt: '#3a2a2a', hair: '#8a1c1c' };
+
   function iconCanvas(kind, scale = 2) {
     const src = spriteFor(kind);
     const c = document.createElement('canvas');
@@ -200,6 +212,7 @@
       case 'campfire': return SPR.campfire(0);
       case 'logs': return SPR.logs();
       case 'crate': return SPR.crate();
+      case 'medicine': return SPR.medicine();
       case 'potato': return SPR.potato();
       case 'meal': return SPR.meal();
       case 'berries': return SPR.berries();
@@ -234,7 +247,7 @@
   }
 
   // ---------- terrain ----------
-  let terrainCanvas = null;
+  let terrainCanvas = null, terrainVersion = 0;
   function buildTerrain() {
     const s = S();
     const c = document.createElement('canvas');
@@ -274,7 +287,7 @@
   const el = {
     clock: h('span', { class: 'mm-clock' }),
     weather: h('span', { class: 'mm-weather' }),
-    wood: h('b'), food: h('b'), meal: h('b'),
+    wood: h('b'), food: h('b'), meal: h('b'), med: h('b'),
     speed: [],
     bar: h('div', { class: 'mm-colonists', 'aria-label': 'Colonists' }),
     letters: h('div', { class: 'mm-letters', 'aria-label': 'Letters' }),
@@ -297,6 +310,7 @@
     h('span', { class: 'mm-chip', title: 'Wood' }, iconCanvas('logs', 1.25), el.wood),
     h('span', { class: 'mm-chip', title: 'Raw food: potatoes and berries' }, iconCanvas('potato', 1.25), el.food),
     h('span', { class: 'mm-chip', title: 'Cooked meals' }, iconCanvas('meal', 1.25), el.meal),
+    h('span', { class: 'mm-chip', title: 'Medicine' }, iconCanvas('medicine', 1.25), el.med),
     speedGroup,
     h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: openMenu } }, 'Menu'));
   const stage = h('div', { class: 'mm-stage' }, canvas, el.letters, el.hover, el.toast);
@@ -337,6 +351,7 @@
     ui.tool = t;
     ui.drag = null;
     for (const [k, b] of el.toolBtns) b.classList.toggle('is-on', !!t && t.kind === k);
+    if (t && t.kind === 'move') return void (el.tip.textContent = 'Click where they should go. Right-click also moves a drafted colonist.');
     if (t && ui.view !== 'map') setView('map');
     const tips = {
       wall: 'Click or drag to plan walls.', door: 'Click a wall gap to plan a door.',
@@ -346,6 +361,7 @@
       grow: 'Drag over open ground to mark a field. Colonists plant potatoes there when it is warm.',
       clearzone: 'Drag to remove stockpiles and fields.',
     };
+    if (t && t.kind === 'move') { el.tip.textContent = 'Click where they should go. Right-click also moves a drafted colonist.'; return; }
     el.tip.textContent = t ? `${tips[t.kind] || `Click to place a ${M.DEFS[t.kind].label.toLowerCase()}.`} Right-click or Esc to stop.` : '';
   }
   function setView(v) {
@@ -385,7 +401,18 @@
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('pointerdown', (e) => {
     const p = eventTile(e);
-    if (e.button === 2) { setTool(null); return; }
+    if (e.button === 2) {
+      const c = ui.sel && ui.sel.kind === 'colonist' && S().colonists.find((o) => o.id === ui.sel.id);
+      if (c && c.drafted && ui.view === 'map') { order({ type: 'move', id: c.id, x: p.x, y: p.y }); ui.moveMark = { x: p.x, y: p.y, until: performance.now() + 700 }; return; }
+      setTool(null);
+      return;
+    }
+    if (ui.tool && ui.tool.kind === 'move') {
+      order({ type: 'move', id: ui.tool.id, x: p.x, y: p.y });
+      ui.moveMark = { x: p.x, y: p.y, until: performance.now() + 700 };
+      setTool(null);
+      return;
+    }
     if (ui.view === 'world') { clickWorld(p); return; }
     if (!ui.tool) { clickMap(p); return; }
     canvas.setPointerCapture(e.pointerId);
@@ -432,6 +459,9 @@
       if (c.away) continue;
       const d = Math.hypot(c.x + 0.5 - p.lx / TS, c.y + 0.5 - p.ly / TS);
       if (d < bd) { bd = d; best = c; }
+    }
+    for (const r of s.raiders || []) {
+      if (Math.hypot(r.x + 0.5 - p.lx / TS, r.y + 0.5 - p.ly / TS) < 0.75) return select({ kind: 'raider', id: r.id });
     }
     if (best) return select({ kind: 'colonist', id: best.id });
     const th = q.thingAt(p.x, p.y);
@@ -604,7 +634,7 @@
   function bar(g, x, y, f, col) { R(g, x, y, 14, 3, INK); R(g, x + 1, y + 1, Math.round(12 * Math.max(0, Math.min(1, f))), 1, col); }
 
   function itemSprite(kind) {
-    return kind === 'wood' ? SPR.logs() : kind === 'potato' ? SPR.potato() : kind === 'berries' ? SPR.berries() : SPR.meal();
+    return kind === 'wood' ? SPR.logs() : kind === 'potato' ? SPR.potato() : kind === 'berries' ? SPR.berries() : kind === 'medicine' ? SPR.medicine() : SPR.meal();
   }
 
   function thingSprite(th, now) {
@@ -617,6 +647,7 @@
       case 'campfire': return SPR.campfire(f, th.lit || th.bp ? 1 : 0);
       case 'bush': return SPR.bush(!!th.berries);
       case 'keeper': return SPR.keeper();
+      case 'grave': return SPR.grave();
       default: return null;
     }
   }
@@ -682,8 +713,22 @@
     }
   }
 
+  function drawLying(g, look, px, py) {
+    g.save();
+    g.translate(px + 15, py + 5);
+    g.rotate(Math.PI / 2);
+    g.drawImage(colonistSprite(look, 0, false, false), 0, 0);
+    g.restore();
+  }
   function drawColonist(g, c, now) {
     const px = Math.round(c.x * TS), py = Math.round(c.y * TS);
+    if (c.downed) {
+      const onBed = q.thingAt(Math.round(c.x), Math.round(c.y));
+      if (onBed && onBed.type === 'bed' && !c.carriedBy) g.drawImage(colonistSprite(c, 0, false, true), px + 3, py);
+      else drawLying(g, c, px, c.carriedBy ? py - 8 : py + 2);
+      if (c.injuries.some((i) => !i.tended && i.bleed > 0)) { R(g, px + 12, py - 2, 3, 4, INK); R(g, px + 13, py - 1, 1, 2, '#d8323c'); }
+      return;
+    }
     const bedHere = c.sleeping && q.thingAt(Math.round(c.x), Math.round(c.y));
     if (c.sleeping && bedHere && bedHere.type === 'bed') {
       g.drawImage(colonistSprite(c, 0, false, true), px + 3, py);
@@ -702,11 +747,23 @@
     const prog = jobProgress(c);
     if (prog != null) bar(g, px + 1, py - 4, prog, '#ffd23d');
     if (c.cold > 0.15) { const bx = px + 13, by = py - 1; R(g, bx, by + 1, 5, 1, '#bfe3ff'); R(g, bx + 2, by - 1, 1, 5, '#bfe3ff'); }
+    if (c.drafted) { R(g, px + 1, py - 1, 4, 6, INK); R(g, px + 2, py, 2, 4, '#d8323c'); }
+    if (c.injuries && c.injuries.some((i) => !i.tended && i.bleed > 0)) { R(g, px + 12, py + 4, 3, 4, INK); R(g, px + 13, py + 5, 1, 2, '#d8323c'); }
+  }
+  function drawRaider(g, r, now) {
+    const px = Math.round(r.x * TS), py = Math.round(r.y * TS);
+    const moving = r.path && r.path.length;
+    const frame = moving ? Math.floor(now / 160) % 2 : 0;
+    g.fillStyle = 'rgba(0,0,0,.28)';
+    g.fillRect(px + 3, py + 14, 10, 2);
+    g.drawImage(colonistSprite(RAIDER_LOOK, frame, (r.facing || -1) < 0, false), px + 3, py + 1);
+    if (r.hp < 1) bar(g, px + 1, py - 4, r.hp, '#d8323c');
+    if (r.carry) g.drawImage(itemSprite(r.carry.kind), px + 4, py - 9, 9, 9);
   }
 
   function drawMap(now) {
     const s = S(), g = ctx;
-    if (!terrainCanvas) buildTerrain();
+    if (!terrainCanvas || terrainVersion !== (s.terrainVersion || 0)) { terrainVersion = s.terrainVersion || 0; buildTerrain(); }
     g.drawImage(terrainCanvas, 0, 0);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       if (s.terrain[y * W + x] !== M.T.WATER) continue;
@@ -733,11 +790,28 @@
 
     const drawables = [];
     for (const th of s.things) drawables.push([th.y + (th.type === 'tree' ? 0.2 : 0), 0, th]);
-    for (const c of s.colonists) if (!c.away) drawables.push([c.y + 0.1, 1, c]);
+    for (const c of s.colonists) if (!c.away) drawables.push([c.y + (c.carriedBy ? 0.2 : 0.1), 1, c]);
+    for (const r of s.raiders || []) drawables.push([r.y + 0.1, 2, r]);
     drawables.sort((a, b) => a[0] - b[0]);
     for (const [, kind, obj] of drawables) {
       if (kind === 0) drawThing(g, obj, now);
-      else drawColonist(g, obj, now);
+      else if (kind === 1) drawColonist(g, obj, now);
+      else drawRaider(g, obj, now);
+    }
+    const ff = Math.floor(now / 180) % 2;
+    for (const k of Object.keys(s.fires || {})) {
+      const i = Number(k), f = s.fires[k];
+      g.globalAlpha = Math.min(1, 0.5 + f.i / 2);
+      g.drawImage(SPR.fire((ff + i) % 2), (i % W) * TS, ((i / W) | 0) * TS);
+      g.globalAlpha = 1;
+    }
+    for (const sh of s.shots || []) {
+      g.strokeStyle = sh.hit ? '#ffd23d' : 'rgba(255,255,255,.6)';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(sh.x0 * TS + 8, sh.y0 * TS + 6);
+      g.lineTo(sh.x1 * TS + 8, sh.y1 * TS + 6);
+      g.stroke();
     }
 
     // frost on cold rooms
@@ -820,7 +894,12 @@
       g.lineWidth = 1;
       g.strokeRect(x0 * TS + 0.5, y0 * TS + 0.5, (x1 - x0 + 1) * TS - 1, (y1 - y0 + 1) * TS - 1);
     }
+    if (ui.moveMark && ui.moveMark.until > performance.now()) brackets(g, ui.moveMark.x * TS + 3, ui.moveMark.y * TS + 3, 10, 10);
     const sel = ui.sel;
+    if (sel && sel.kind === 'raider') {
+      const r = (s.raiders || []).find((o) => o.id === sel.id);
+      if (r) brackets(g, Math.round(r.x * TS), Math.round(r.y * TS), TS, TS);
+    }
     if (sel && sel.kind === 'colonist') {
       const c = s.colonists.find((o) => o.id === sel.id);
       if (c && !c.away) brackets(g, Math.round(c.x * TS), Math.round(c.y * TS), TS, TS);
@@ -844,6 +923,7 @@
       return cv && cv.status === 'blocked' ? 'With the caravan, waiting at the blockage' : cv && cv.status === 'returning' ? 'With the caravan, heading home' : 'With the caravan';
     }
     const j = c.job;
+    if (c.downed) return c.carriedBy ? 'Down, being carried' : 'Down, cannot move';
     if (!j) return 'Idle';
     const th = j.targetId != null ? q.byId(j.targetId) : null;
     const going = j.stage === 'walk' ? 'Going to ' : '';
@@ -865,6 +945,13 @@
       case 'chop': return j.stage === 'walk' ? 'Going to chop a tree' : 'Chopping a tree';
       case 'harvest': return j.stage === 'walk' ? 'Going to pick berries' : 'Picking berries';
       case 'inspect': return j.stage === 'walk' ? 'Going to inspect the heater' : 'Inspecting the heater';
+      case 'drafted': return j.stage === 'walk' ? 'Drafted, moving' : 'Drafted, holding position';
+      case 'flee': return 'Fleeing indoors';
+      case 'hide': return 'Hiding from raiders';
+      case 'firefight': return 'Fighting a fire';
+      case 'bedrest': return 'Resting in bed with wounds';
+      case 'rescue': { const pt = S().colonists.find((o) => o.id === j.patientId); return j.carrying ? `Carrying ${pt ? pt.name : 'someone'} to bed` : `Going to rescue ${pt ? pt.name : 'someone'}`; }
+      case 'tend': { const pt = S().colonists.find((o) => o.id === j.patientId); return j.stage === 'fetch' ? 'Fetching medicine' : `Tending ${pt ? (pt === c ? 'their own wounds' : pt.name) : 'a patient'}`; }
       default: return 'Wandering';
     }
   }
@@ -910,6 +997,7 @@
     el.wood.textContent = cnt.wood;
     el.food.textContent = cnt.potato + cnt.berries;
     el.meal.textContent = cnt.meal;
+    el.med.textContent = cnt.medicine;
   }
 
   function hoverText() {
@@ -951,7 +1039,7 @@
       if (!c) return { sig: 'gone', build: () => [] };
       const ths = q.thoughts(c).sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
       return {
-        sig: `c${c.id}${Math.round(c.food * 20)}${Math.round(c.rest * 20)}${Math.round(q.health(c) * 20)}${Math.round(c.mood / 4)}${activity(c)}${ths.map((t) => t.key + t.value).join()}`,
+        sig: `c${c.id}${c.drafted}${c.downed}${c.carriedBy}${(c.injuries || []).map((i) => `${i.tended}${Math.round(i.sev * 20)}`).join()}${Math.round((c.blood || 1) * 20)}${Math.round(c.food * 20)}${Math.round(c.rest * 20)}${Math.round(q.health(c) * 20)}${Math.round(c.mood / 4)}${activity(c)}${ths.map((t) => t.key + t.value).join()}`,
         build: () => {
           const conds = [];
           if (c.cold > 0.05) conds.push(`Hypothermia ${Math.round(c.cold * 100)}%`);
@@ -963,6 +1051,13 @@
             needBar(`Mood`, c.mood / 100, c.mood < 25 ? '#d8323c' : c.mood < 45 ? '#e0b64a' : '#6fe07a'),
             needBar('Food', c.food, '#e0b64a'), needBar('Rest', c.rest, '#6a9bd0'), needBar('Health', q.health(c), '#6fe07a'),
             conds.length ? h('p', { class: 'mm-warn' }, conds.join(' · ')) : null,
+            (c.injuries || []).length ? h('ul', { class: 'mm-thoughts' }, c.injuries.map((i) => h('li', { class: 'is-neg' }, h('span', null, `${i.label}${i.tended ? (i.med ? ', tended with medicine' : ', tended') : i.bleed > 0 ? ', bleeding' : ''}`), h('b', null, `${Math.round(i.sev * 100)}%`)))) : null,
+            c.blood < 0.95 ? needBar('Blood', c.blood, '#d8323c') : null,
+            h('div', { class: 'mm-gizmos' },
+              c.downed ? gizmo('Rescue now', () => { const r = order({ type: 'rescue', id: c.id }); if (r.ok) toast(`${r.rescuer} is going`); }, c.carriedBy ? 'Already being carried' : null)
+                : c.away ? null
+                  : [gizmo(c.drafted ? 'Release' : 'Draft', () => order({ type: 'draft', id: c.id, on: !c.drafted })),
+                    c.drafted ? gizmo('Move…', () => setTool({ kind: 'move', id: c.id })) : null]),
             ths.length ? h('ul', { class: 'mm-thoughts' }, ths.slice(0, 6).map((t) => h('li', { class: t.value < 0 ? 'is-neg' : 'is-pos' }, h('span', null, t.label), h('b', null, `${t.value > 0 ? '+' : ''}${t.value}`)))) : null];
         },
       };
@@ -1050,11 +1145,18 @@
       }
       if (th.type === 'tree') return { sig: `tr${th.id}${th.des}${Math.round((th.growth == null ? 1 : th.growth) * 20)}`, build: () => [h('h4', null, (th.growth == null ? 1 : th.growth) < 0.5 ? 'Sapling' : 'Tree'), h('p', null, `Gives about ${Math.max(1, Math.round(10 * (th.growth == null ? 1 : th.growth)))} wood when chopped.${(th.growth == null ? 1 : th.growth) < 0.5 ? ' Too young to chop yet.' : (th.growth == null ? 1 : th.growth) < 1 ? ' Still growing.' : ''}`), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'chop' ? 'Don’t chop' : 'Chop', () => order({ type: 'designate', mode: th.des === 'chop' ? 'cancel' : 'chop', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
       if (th.type === 'bush') return { sig: `bu${th.id}${th.des}${th.berries}`, build: () => [h('h4', null, 'Berry bush'), h('p', null, th.berries ? 'Ripe. Gives 4 berries, which spoil within about two days.' : `Regrowing${q.outdoorTemp() <= 5 ? ' when it warms up' : `, ripe in ${fmtH(th.regrowAt - s.t)}`}.`), h('div', { class: 'mm-gizmos' }, gizmo(th.des === 'harvest' ? 'Stop picking' : 'Pick berries', () => order({ type: 'designate', mode: th.des === 'harvest' ? 'cancel' : 'harvest', x0: th.x, y0: th.y, x1: th.x, y1: th.y })))] };
+      if (th.type === 'grave') return { sig: `g${th.id}`, build: () => [h('h4', null, 'Grave'), h('p', null, `${th.name || 'A colonist'} is buried here.`)] };
       if (th.type === 'keeper') return { sig: 'keeper', build: () => [h('h4', null, 'The Archivist'), h('p', null, 'She has been watching how the colony handles trouble.'), h('div', { class: 'mm-gizmos' }, gizmo('Talk to her', () => openModal('reflect')))] };
       return { sig: `o${th.id}${where}${Math.round(th.fuel || 0)}${th.lit}`, build: () => [h('h4', null, d.label), where ? h('p', { class: 'mm-muted' }, where) : null,
         d.fuelCap ? fuelLine(th) : null,
         d.heat ? h('p', null, `${th.lit ? 'Burning' : th.fuel > 0 ? 'Idle while it is warm outside' : 'Out of fuel'}. Heats the room it stands in${d.always ? ', and burns all the time' : ' when it is cool outside'}.`) : null,
         d.cook ? h('p', null, 'Colonists cook meals here while it has fuel: 2 raw food make 1 meal.') : null] };
+    }
+    if (sel.kind === 'raider') {
+      const r = (s.raiders || []).find((o) => o.id === sel.id);
+      if (!r) return { sig: 'rgone', build: () => [h('p', { class: 'mm-muted' }, 'Gone.')] };
+      return { sig: `r${r.id}${Math.round(r.hp * 10)}${r.state}${!!r.carry}`, build: () => [h('h4', null, 'Raider'), needBar('Health', Math.max(0, r.hp), '#d8323c'),
+        h('p', null, r.state === 'flee' ? (r.carry ? `Running off with ${r.carry.n} ${M.ITEMS[r.carry.kind].label.toLowerCase()}.` : 'Retreating.') : 'Looking for supplies and shooting anyone in the open.')] };
     }
     if (sel.kind === 'world') return worldInspect(sel.what);
     return { sig: 'x', build: () => [] };
@@ -1242,6 +1344,7 @@
     setView('map');
     if (f.thingId != null) select({ kind: 'thing', id: f.thingId });
     if (f.colonistId != null) select({ kind: 'colonist', id: f.colonistId });
+    if (f.tile != null) select({ kind: 'tile', x: f.tile % W, y: (f.tile / W) | 0 });
   }
 
   function workModal() {
