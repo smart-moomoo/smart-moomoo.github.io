@@ -1116,7 +1116,7 @@
       if (th.type === 'barricade') return { sig: `ba${th.id}`, build: () => [h('h4', null, 'Barricade'), h('p', null, 'Colonists next to it are much harder to hit.')] };
       if (th.type === 'trap') return { sig: `tp${th.id}`, build: () => [h('h4', null, 'Spike trap'), h('p', null, 'Badly wounds the first raider who steps on it.')] };
       if (th.type === 'grave') return { sig: `g${th.id}`, build: () => [h('h4', null, 'Grave'), h('p', null, `${th.name || 'A colonist'} is buried here.`)] };
-      if (th.type === 'keeper') return { sig: 'keeper', build: () => [h('h4', null, 'The Archivist'), h('p', null, 'She has been watching how the colony handles trouble.'), h('div', { class: 'mm-gizmos' }, gizmo('Talk to her', () => openModal('reflect')))] };
+      if (th.type === 'keeper') return { sig: 'keeper', build: () => [h('h4', null, 'The Archivist'), h('p', null, 'She has a few thoughts about the choices you’ve been making.'), h('div', { class: 'mm-gizmos' }, gizmo('Sit and talk', () => openModal('reflect')))] };
       return { sig: `o${th.id}${where}${Math.round(th.fuel || 0)}${th.lit}`, build: () => [h('h4', null, d.label), where ? h('p', { class: 'mm-muted' }, where) : null,
         d.fuelCap ? fuelLine(th) : null,
         d.heat ? h('p', null, `${th.lit ? 'Burning' : th.fuel > 0 ? 'Idle while it is warm outside' : 'Out of fuel'}. Heats the room it stands in${d.always ? ', and burns all the time' : ' when it is cool outside'}.`) : null,
@@ -1248,7 +1248,7 @@
       request: ['A runner has arrived.', 'Read the letter from Millbrook. Either answer is fine.'],
       errand: ['Someone has to go.', 'Choose who makes the trip. Each person’s card says what it would mean for them.'],
       'errand-out': [`${courier ? courier.name : 'The courier'} is on the road.`, `Back in about ${Math.max(0, Math.round(((it.returnAt || s.t) - s.t) * 60))} minutes. Press ▶▶ to speed up time.`],
-      reflect: ['Before bed, visit the Archivist.', 'Click her in the small hut, or press Archivist below. She has an early impression of you.'],
+      reflect: ['There’s someone you should meet.', 'The Archivist is in the small hut. Click her, or choose Archivist below, to hear what she makes of your choices.'],
     };
     const [head, body] = lines[it.stage] || ['', ''];
     const steps = [['Pick berries for dinner', it.stage !== 'order' && it.stage !== 'watch' || (it.picked || 0) > 0], ['Answer Millbrook', ['errand', 'errand-out', 'reflect'].includes(it.stage)], ['Send someone', ['errand-out', 'reflect'].includes(it.stage)], ['Hear the Archivist', false]];
@@ -1507,21 +1507,20 @@
     keeper.className = 'mm-keeper';
     const idx = Math.min((ui.modal.arg && ui.modal.arg.idx) || 0, Math.max(0, cards.length - 1));
     const showWhy = !!(ui.modal.arg && ui.modal.arg.why);
-    const firstOnly = cards.length && cards.every((c) => c.stage === 'first');
+    const first = cards.length && cards[idx].stage === 'first';
     const body = [h('div', { class: 'mm-keeper-row' }, keeper, h('p', { class: 'mm-speech' }, !cards.length
-      ? 'I don’t know you well enough yet. Keep looking after the colony and come back.'
-      : firstOnly
-        ? 'I’ve only watched you a little, so take this lightly. Here is how I think you might act somewhere else. Tell me whether it fits.'
-        : 'Here is how I think you’d act somewhere else. Some of it I’m surer of than the rest. Tell me whether it fits.'))];
+      ? 'I haven’t quite got a sense of you yet. Come back after you’ve made a few more choices.'
+      : first
+        ? 'I’m still getting to know you. Here’s a hunch about life outside the colony. Tell me if it sounds like you.'
+        : 'A few of your choices have stayed with me. This is how I imagine them showing up outside the colony. Tell me what you recognize.'))];
     if (cards.length) {
       const card = cards[idx];
       const nav = (d) => { ui.modal.arg = { idx: idx + d, why: false }; renderModal(); };
       body.push(h('div', { class: 'mm-portrait-card' },
         h('p', { class: 'mm-kicker' }, `${card.stage === 'first' ? 'First impression' : 'Recurring pattern'} · ${card.family} · ${idx + 1} of ${cards.length}`),
         h('blockquote', { class: card.stage === 'first' ? 'is-first' : null }, `“${card.text}”`),
-        h('p', { class: 'mm-muted' }, card.source),
-        h('button', { type: 'button', class: 'mm-link mm-link-dark', on: { click: () => { ui.modal.arg = { idx, why: !showWhy }; renderModal(); } } }, showWhy ? 'Hide why' : 'Why this impression?'),
-        showWhy ? h('ul', { class: 'mm-why' }, card.why.map((w) => h('li', null, w))) : null,
+        h('button', { type: 'button', class: 'mm-link mm-link-dark', 'aria-expanded': String(showWhy), on: { click: () => { ui.modal.arg = { idx, why: !showWhy }; renderModal(); } } }, showWhy ? 'Hide the details' : 'What makes you say that?'),
+        showWhy ? h('div', null, h('p', { class: 'mm-muted' }, card.source), h('ul', { class: 'mm-why' }, card.why.map((w) => h('li', null, w)))) : null,
         feedbackRow(card),
         h('div', { class: 'mm-actions mm-actions-split' },
           h('button', { type: 'button', class: 'mm-btn', disabled: idx === 0, on: { click: () => nav(-1) } }, '← Previous'),
@@ -1529,9 +1528,9 @@
     }
     const forming = O.impressions().filter(({ branches }) => Object.values(branches).some((b) => !b.stage));
     if (forming.length) {
-      body.push(h('div', { class: 'mm-forming' }, h('p', { class: 'mm-kicker' }, 'Still watching'),
+      body.push(h('div', { class: 'mm-forming' }, h('p', { class: 'mm-kicker' }, 'There’s more to learn'),
         h('ul', { class: 'mm-watching' }, forming.map(({ fam, branches }) => h('li', null, h('strong', null, fam.title),
-          h('span', null, Object.entries(branches).filter(([, b]) => !b.stage).map(([c, b]) => `${fam.conditions[c]}: ${b.n ? `${b.n} choice${b.n > 1 ? 's' : ''}, no clear lean yet` : 'not seen yet'}`).join(' · ')))))));
+          h('span', null, Object.entries(branches).filter(([, b]) => !b.stage).map(([c, b]) => `${fam.conditions[c]}: ${b.n ? `${b.n} choice${b.n > 1 ? 's' : ''}, still too early to tell` : 'we haven’t been here yet'}`).join(' · ')))))));
     }
     return modalFrame('The Archivist', ...body);
   }
@@ -1539,15 +1538,15 @@
   function feedbackRow(card) {
     const prev = O.feedbackFor(card.key);
     let verdict = prev ? prev.verdict : null;
-    const note = h('textarea', { class: 'mm-note', rows: '2', placeholder: 'Optional: what circumstance matters?', 'aria-label': 'Explanation' });
+    const note = h('textarea', { class: 'mm-note', rows: '2', placeholder: 'What would make you act differently? (Optional)', 'aria-label': 'Tell the Archivist more' });
     if (prev && prev.note) note.value = prev.note;
-    const status = h('span', { class: 'mm-saved' }, prev ? 'Saved.' : '');
+    const status = h('span', { class: 'mm-saved' }, prev ? 'Noted.' : '');
     const record = () => {
       if (!verdict) return;
       O.addFeedback({ key: card.key, verdict, note: note.value.trim(), stage: card.stage, family: card.family, why: card.why });
-      status.textContent = 'Saved.';
+      status.textContent = 'Noted.';
     };
-    const choices = [['fits', 'Fits'], ['doesnt_fit', 'Doesn’t fit'], ['depends', 'Depends']];
+    const choices = [['fits', 'That sounds like me'], ['doesnt_fit', 'Not really'], ['depends', 'It depends']];
     const buttons = choices.map(([id, label]) => {
       const b = h('button', { type: 'button', class: `mm-btn mm-btn-s${verdict === id ? ' is-on' : ''}`, 'aria-pressed': String(verdict === id) }, label);
       b.addEventListener('click', () => {
@@ -1579,7 +1578,7 @@
       familyTable(),
       h('h5', { class: 'mm-subhead' }, 'Setbacks in detail'),
       h('p', null, 'Every description traces back to these counts. Rule ', h('code', null, O.RULE_VERSION),
-        ': the first order that commits to a next approach is the response. Before the report arrived means “changed plan first”; after reading the report means “waited for the report”. Estimates use (changes + 1) / (decisions + 2); a description needs 8 decisions across both kinds of trouble and at least 75% one way.'),
+        ': the first order that commits to a next approach is the response. Before the report arrived means “changed plan first”; after reading the report means “waited for the report”. Estimates use (changes + 1) / (decisions + 2). An early impression can appear after two choices. A recurring pattern needs 8 decisions across both kinds of trouble and at least 75% one way.'),
       h('div', { class: 'mm-table-wrap' }, h('table', { class: 'mm-table' },
         h('thead', null, h('tr', null, ['Condition', 'Decisions', 'Changed plan first', 'Waited for report', 'P(change plan)', 'Status'].map((t) => h('th', null, t)))),
         h('tbody', null, O.DEADLINES.map((d) => {

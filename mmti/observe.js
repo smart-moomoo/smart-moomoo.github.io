@@ -7,6 +7,7 @@ window.MMTI = window.MMTI || {};
   const M = window.MMTI;
   const KEY = 'mmti-observe-v1';
   const RULE_VERSION = 'setback-switch-v1';
+  const COPY_VERSION = 'archivist-scenes-v2';
   const RELEASE = { minEpisodes: 8, minEventTypes: 2, threshold: 0.75 };
   const EVENT_VERSION = { heating: 'heating-colony-v1', caravan: 'caravan-colony-v1' };
   const DEADLINES = ['urgent', 'none'];
@@ -14,25 +15,25 @@ window.MMTI = window.MMTI || {};
 
   const SCENES = [
     { id: 'dinner',
-      urgent: { switch: 'When dinner is running late and a recipe fails, you tend to try another dish before finding out what went wrong.',
-        seek_info: 'When dinner is running late and a recipe fails, you tend to look for the cause before deciding to try another dish.' },
-      none: { switch: 'With an afternoon free to cook, a failed recipe tends to send you to another dish before you work out what went wrong.',
-        seek_info: 'With an afternoon free to cook, you tend to work out why a recipe failed before moving to another dish.' } },
+      urgent: { switch: 'Guests arrive in twenty minutes and dinner has gone wrong. You’d switch to another dish before working out what happened.',
+        seek_info: 'Guests arrive in twenty minutes and dinner has gone wrong. You’d want to know what happened before deciding what to cook instead.' },
+      none: { switch: 'With a whole afternoon to cook, a failed cake would still send you to another recipe. Finding out why it sank could wait.',
+        seek_info: 'With a whole afternoon to cook, you’d want to know why the cake sank before reaching for another recipe.' } },
     { id: 'station',
-      urgent: { switch: 'When your train is about to leave and the way to the platform is blocked, you tend to try another route before checking what caused the blockage.',
-        seek_info: 'When your train is about to leave and the way to the platform is blocked, you tend to check what happened before choosing another route.' },
-      none: { switch: 'With plenty of time before your train, a blocked path still tends to send you to another route before you check what happened.',
-        seek_info: 'With plenty of time before your train, you tend to find out why a path is blocked before deciding to take another route.' } },
+      urgent: { switch: 'Your train leaves in ten minutes and the station entrance is closed. You’d look for another way in before checking what happened.',
+        seek_info: 'Your train leaves in ten minutes and the station entrance is closed. You’d stop to find out what happened before choosing another way in.' },
+      none: { switch: 'Even with an hour before your train, a closed station entrance would send you looking for another way in before asking what happened.',
+        seek_info: 'With an hour before your train, you’d ask why the station entrance is closed before setting off to find another way in.' } },
     { id: 'build',
-      urgent: { switch: 'When a build breaks an hour before a release cut, you tend to revert or try another approach before understanding what broke.',
-        seek_info: 'When a build breaks an hour before a release cut, you tend to find out what broke before choosing another approach.' },
-      none: { switch: 'When a build breaks on a quiet afternoon, you still tend to try another approach before understanding what broke.',
-        seek_info: 'When a build breaks on a quiet afternoon, you tend to find out what broke before choosing another approach.' } },
+      urgent: { switch: 'The printer stops just before you need the handouts. You’d try another printer before reading the error message.',
+        seek_info: 'The printer stops just before you need the handouts. You’d read the error message before deciding whether to use another printer.' },
+      none: { switch: 'The printer stops, and the handouts aren’t needed until next week. You’d still try another printer before reading the error message.',
+        seek_info: 'The printer stops, and the handouts aren’t needed until next week. You’d read the error message before deciding whether to use another printer.' } },
     { id: 'slides',
-      urgent: { switch: 'Minutes before you present, if your slides won’t open on the room’s computer, you tend to find another way to present before working out why the file failed.',
-        seek_info: 'Minutes before you present, if your slides won’t open on the room’s computer, you tend to work out why before settling on another way to present.' },
-      none: { switch: 'The day before a talk, if your slides won’t open on the room’s computer, you tend to find another way to present before working out why.',
-        seek_info: 'The day before a talk, if your slides won’t open on the room’s computer, you tend to work out why before deciding whether to present another way.' } },
+      urgent: { switch: 'The room is filling up and your slides won’t open. You’d find another way to give the talk before investigating the file.',
+        seek_info: 'The room is filling up and your slides won’t open. You’d try to find out why before settling on another way to give the talk.' },
+      none: { switch: 'Your talk is tomorrow, but the slides won’t open. You’d start finding another way to present before investigating the file.',
+        seek_info: 'Your talk is tomorrow, but the slides won’t open. You’d work out why before deciding whether to present another way.' } },
   ];
 
   function fresh() { return { episodes: [], feedback: [], decisions: [], sceneSeed: Math.floor(Math.random() * 1e9) }; }
@@ -104,12 +105,12 @@ window.MMTI = window.MMTI || {};
   function contrastText(u, c) {
     if (u === c) {
       return u === 'switch'
-        ? 'Deadline or not, after a setback you tend to change plans before learning what went wrong.'
-        : 'Deadline or not, after a setback you tend to find out what went wrong before changing plans.';
+        ? 'If a recipe fails, you’d reach for another before investigating. That holds whether guests are at the door or you have the afternoon to yourself.'
+        : 'If a recipe fails, you’d want to know why before choosing another. Even guests at the door wouldn’t usually change that order.';
     }
     return u === 'switch'
-      ? 'Under a deadline, you tend to change plans before learning what went wrong. With time to spare, you tend to find out first.'
-      : 'Under a deadline, you tend to find out what went wrong first. With time to spare, you tend to move to a new plan before learning why.';
+      ? 'If dinner goes wrong with guests at the door, you’d switch dishes. With the afternoon to yourself, you’d investigate the failed recipe first.'
+      : 'If dinner goes wrong with guests at the door, you’d investigate first. With the afternoon to yourself, you’d be more inclined to try another recipe straight away.';
   }
 
   function portraitCards(m) {
@@ -121,14 +122,14 @@ window.MMTI = window.MMTI || {};
       if (!b.released) continue;
       const scene = scenes[si++ % scenes.length];
       cards.push({
-        key: `${RULE_VERSION}|${d}|${b.released}|${scene.id}`,
+        key: `${RULE_VERSION}|${d}|${b.released}|${scene.id}|${COPY_VERSION}`,
         text: scene[d][b.released],
-        source: `Written for you. It comes from ${b.n} decisions you made in the colony ${d === 'urgent' ? 'with a deadline closing in' : 'with no deadline'}, across ${b.types.size} kinds of trouble. Nothing in this setting was observed.`,
+        source: `I’m picturing this from ${b.n} decisions ${d === 'urgent' ? 'with a deadline approaching' : 'with time to spare'}, across ${b.types.size} kinds of trouble in the colony.`,
       });
     }
     if (m.urgent.released && m.none.released) {
       cards.push({
-        key: `${RULE_VERSION}|contrast|${m.urgent.released}|${m.none.released}`,
+        key: `${RULE_VERSION}|contrast|${m.urgent.released}|${m.none.released}|${COPY_VERSION}`,
         text: contrastText(m.urgent.released, m.none.released),
         source: `Compares both: ${m.urgent.n} decisions with a deadline and ${m.none.n} without one.`,
       });
@@ -147,7 +148,7 @@ window.MMTI = window.MMTI || {};
 
   const FAMILIES = [
     {
-      id: 'setback', title: 'Changing plans after a setback',
+      id: 'setback', title: 'When plans go wrong',
       conditions: { urgent: 'with a deadline', none: 'with time to spare' }, responses: ['switch', 'seek_info'],
       firstMin: 2, patternMin: 8,
       sample: () => store.episodes.map((ep) => {
@@ -163,33 +164,33 @@ window.MMTI = window.MMTI || {};
         return sc[cond][resp];
       },
       contrast: {
-        'switch|seek_info': 'Under a deadline, you tend to change plans before learning what went wrong. With time to spare, you tend to find out first.',
-        'seek_info|switch': 'Under a deadline, you tend to find out what went wrong first. With time to spare, you tend to move to a new plan before learning why.',
-        'switch|switch': 'Deadline or not, after a setback you tend to change plans before learning what went wrong.',
-        'seek_info|seek_info': 'Deadline or not, after a setback you tend to find out what went wrong before changing plans.',
+        'switch|seek_info': contrastText('switch', 'seek_info'),
+        'seek_info|switch': contrastText('seek_info', 'switch'),
+        'switch|switch': contrastText('switch', 'switch'),
+        'seek_info|seek_info': contrastText('seek_info', 'seek_info'),
       },
     },
     {
-      id: 'reserves', title: 'Helping while protecting reserves',
-      conditions: { comfortable: 'when you had plenty to spare', thin: 'when helping left little margin' }, responses: ['give', 'keep'],
+      id: 'reserves', title: 'What you can spare',
+      conditions: { comfortable: 'when you had plenty to spare', thin: 'when helping would leave little to spare' }, responses: ['give', 'keep'],
       sample: () => byKind('neighbor-request').filter((d) => !d.expired && d.affordable).map((d) => ({
         condition: d.daysLeftAfter >= 2 ? 'comfortable' : 'thin', response: d.accept ? 'give' : 'keep', source: d.intro ? 'first evening' : d.resource, t: d.t,
         why: `${when(d.t)}: Millbrook asked for ${d.amount} ${d.resource}. Giving would have left about ${Math.max(0, d.daysLeftAfter).toFixed(1)} days of reserves; you ${d.accept ? 'sent it' : 'kept it'}.`,
       })),
       scenes: {
-        comfortable: { give: 'When a friend asks for help moving on a weekend you have free, you tend to say yes without much thought.', keep: 'Even with a free weekend, you tend to keep it for yourself rather than spend it on someone else’s move.' },
-        thin: { give: 'You’ll give up your only evening off to help a friend move.', keep: 'When helping a friend would eat your only evening off, you tend to protect it.' },
+        comfortable: { give: 'A friend needs help moving, and your weekend is free. You’d probably give them a Saturday.', keep: 'A free Saturday is something you’d keep for yourself, even if a friend could use help moving.' },
+        thin: { give: 'Even in a packed week, you’d probably give up your one free evening to help a friend move.', keep: 'When a friend asks for help moving during a packed week, you’d be likely to keep your one free evening.' },
       },
       contrast: {
-        'give|keep': 'You’re generous when you have room to spare, and protective when you don’t.',
-        'keep|give': 'Oddly, you hold back when you have plenty and give when you have little.',
-        'give|give': 'Whether or not you can spare it, you tend to say yes when someone asks.',
-        'keep|keep': 'Whether or not you can spare it, you tend to keep your reserves for your own people.',
+        'give|keep': 'You’d help a friend move on a free weekend. In a packed week, you’d keep your one evening off.',
+        'keep|give': 'You’d be more likely to give a friend your only free evening than a Saturday from an empty weekend.',
+        'give|give': 'You’d usually make time to help a friend move, whether your calendar is empty or you have just one evening free.',
+        'keep|keep': 'You’d usually keep your free time when a friend asks for help moving. That holds for an empty weekend as well as your only evening off.',
       },
     },
     {
-      id: 'reluctance', title: 'Respecting someone’s reluctance',
-      conditions: { comparable: 'when the willing and the reluctant were equally able', capable: 'when the reluctant one was clearly better suited' }, responses: ['spare', 'ask'],
+      id: 'reluctance', title: 'Who you ask',
+      conditions: { comparable: 'when the person who preferred to stay had no clear advantage', capable: 'when the person who preferred to stay was better suited to the job' }, responses: ['spare', 'ask'],
       sample: () => ['errand', 'caravan-members', 'trade'].flatMap((k) => byKind(k)).map((d) => {
         const cands = d.candidates || [];
         const chosen = d.chosen || d.members || [];
@@ -208,21 +209,22 @@ window.MMTI = window.MMTI || {};
         };
       }).filter(Boolean),
       scenes: {
-        comparable: { spare: 'When organizing a trip, you tend to spare the reluctant driver if someone equally capable wants the wheel.', ask: 'When two people could do a chore equally well, you don’t let reluctance decide who does it.' },
-        capable: { spare: 'Even when the reluctant one would get it done faster, you tend to let the willing one go.', ask: 'When the reluctant person is clearly the better fit, you tend to ask them anyway.' },
+        comparable: { spare: 'On a long drive, if two friends handle the car equally well, you’d hand the keys to the one who wants to drive.', ask: 'On a long drive, you’d ask the reluctant friend to take a turn, even when another equally good driver volunteers.' },
+        capable: { spare: 'If your best cook wants the evening off, you’d leave dinner to someone less experienced who wants to cook.', ask: 'If your best cook wants the evening off, you’d still be inclined to ask them to handle dinner.' },
       },
       contrast: {
-        'spare|ask': 'You spare people who’d rather not, until they’re clearly the best person for the job.',
-        'ask|spare': 'Reluctance doesn’t sway you in general, yet you let the willing one go when they’re much less suited.',
-        'spare|spare': 'Whoever is better suited, you tend to send the person who wants to go.',
-        'ask|ask': 'You tend to send whoever is best for the job, whether or not they want to go.',
+        'spare|ask': 'With two equally good cooks, you’d let the one who wants to cook take over. If the reluctant one is much better, you’d ask them.',
+        'ask|spare': 'With two equally good cooks, you’d ask the reluctant one. When the reluctant friend is the better cook, you’d leave dinner to the volunteer.',
+        'spare|spare': 'When friends are deciding who cooks, you’d usually give the kitchen to the person who wants it, even if someone else cooks better.',
+        'ask|ask': 'You’re willing to ask a friend to cook when they’d rather sit it out, whether they’re the strongest cook or just as good as the others.',
       },
     },
     {
-      id: 'preparing', title: 'Preparing before trouble arrives',
-      conditions: { calm: 'while things were calm', trouble: 'right after something went wrong' }, responses: ['protective', 'growth'],
+      id: 'preparing', title: 'What you prepare for',
+      conditions: { calm: 'while things were calm', trouble: 'after recent trouble' }, responses: ['protective', 'growth'],
       sample: () => [
-        ...byKind('research-choice').map((d) => ({
+        // Older saves keep these choices, but lack the context to interpret them.
+        ...byKind('research-choice').filter((d) => typeof d.calm === 'boolean' && typeof d.branch === 'string').map((d) => ({
           condition: d.calm ? 'calm' : 'trouble', response: PROTECTIVE_BRANCH.has(d.branch) ? 'protective' : 'growth', source: 'research', t: d.t,
           why: `${when(d.t)}: ${d.calm ? 'with things calm' : 'soon after trouble'}, you chose to research ${d.key} (${d.branch.toLowerCase()}).`,
         })),
@@ -232,19 +234,19 @@ window.MMTI = window.MMTI || {};
         })),
       ],
       scenes: {
-        calm: { protective: 'Before a long journey, you’re inclined to pack a backup charger even when your phone is fully charged.', growth: 'When things are going well, you tend to put your effort into what’s next rather than into backups.' },
-        trouble: { protective: 'After something goes wrong, you tend to shore things up before moving on.', growth: 'Even right after a scare, you tend to keep building forward instead of bracing for the next one.' },
+        calm: { protective: 'Before a long journey, you’d pack a backup charger even with a full battery.', growth: 'With a trip running smoothly, you’d put your spare time into planning another stop before assembling a backup kit.' },
+        trouble: { protective: 'After a flat tire interrupts a bike ride, you’d sort out a repair kit before planning the next trip.', growth: 'After a flat tire interrupts a bike ride, you’d put your next bit of time or money into another trip before improving your repair kit.' },
       },
       contrast: {
-        'protective|growth': 'You prepare while things are quiet, so a scare doesn’t knock you off course.',
-        'growth|protective': 'You invest in what’s next while things are calm, and only brace after something goes wrong.',
-        'protective|protective': 'Calm or not, you tend to build in a margin for things going wrong.',
-        'growth|growth': 'Calm or not, you’d rather move forward than stockpile for what might go wrong.',
+        'protective|growth': 'You’d pack a repair kit before a bike trip. After a puncture, you’d be more inclined to plan another ride than add to the kit.',
+        'growth|protective': 'With the bike running well, you’d plan the next trip before buying spares. After a puncture, the repair kit would move up your list.',
+        'protective|protective': 'You’d make room for a repair kit before a bike trip. After a puncture, improving the kit would still come before planning a longer ride.',
+        'growth|growth': 'With the bike running well, you’d plan the next trip before buying spares. Even after a puncture, the trip would usually come first.',
       },
     },
     {
-      id: 'revising', title: 'Revising an invested plan',
-      conditions: { info: 'after something changed', noinfo: 'when nothing had changed' }, responses: ['switch', 'stay'],
+      id: 'revising', title: 'When you change course',
+      conditions: { info: 'after trouble interrupted a plan', noinfo: 'without any recorded trouble along the way' }, responses: ['switch', 'stay'],
       sample: () => [
         ...byKind('research-choice').filter((d) => d.previous && d.investedShare >= 0.2 && d.previous !== d.key).map((d) => ({
           condition: d.troubleSincePrevious ? 'info' : 'noinfo', response: 'switch', source: 'research', t: d.t,
@@ -260,18 +262,18 @@ window.MMTI = window.MMTI || {};
         })),
       ],
       scenes: {
-        info: { switch: 'Halfway through preparing dinner, a change in your guests’ needs can still persuade you to change the menu.', stay: 'Once you’ve started cooking, you tend to finish the menu you planned, even when your guests’ needs change.' },
-        noinfo: { switch: 'Halfway through a project, a fresh idea can pull you onto another one even when nothing has changed.', stay: 'When nothing has changed, you see a started project through.' },
+        info: { switch: 'Halfway through planning a holiday, travel disruptions change your options. You’d be willing to set the itinerary aside and start another.', stay: 'If travel disruptions change your options halfway through planning a holiday, you’d still try to make your original itinerary work.' },
+        noinfo: { switch: 'Halfway through planning a holiday, you’d be inclined to start a different itinerary even while the original one still works.', stay: 'Halfway through planning a holiday, if the options haven’t changed, you’d usually finish the itinerary you started.' },
       },
       contrast: {
-        'switch|stay': 'You finish what you start unless something changes, and then you’re willing to change course.',
-        'stay|switch': 'New ideas pull you away from started work, yet real changes in circumstance rarely do.',
-        'switch|switch': 'With or without a reason, you’re quick to drop a half-finished plan for a better-looking one.',
-        'stay|stay': 'Once you’ve put work into a plan, you tend to see it through, whatever changes.',
+        'switch|stay': 'You’d finish a holiday itinerary while the travel options stay the same. A disruption could send you back to a blank page.',
+        'stay|switch': 'You might start a new holiday itinerary on an ordinary afternoon, yet keep working on the old one when a disruption changes the options.',
+        'switch|switch': 'An unfinished holiday itinerary doesn’t tie you to that trip. You’d be willing to start another, with or without a change in the travel options.',
+        'stay|stay': 'Once you’re partway through planning a holiday, you’d usually keep working on that itinerary, even if the travel options change.',
       },
     },
     {
-      id: 'reciprocity', title: 'Responding to past help',
+      id: 'reciprocity', title: 'After receiving help',
       firstMin: 2,
       conditions: { before: 'before Millbrook had helped you', after: 'after Millbrook had helped you' }, responses: ['give', 'refuse'],
       sample: () => [
@@ -285,19 +287,18 @@ window.MMTI = window.MMTI || {};
         })),
       ],
       scenes: {
-        after: { give: 'You’re quicker to rearrange your weekend for someone who has previously shown up for you.', refuse: 'Past favors don’t sway you much; you weigh each request on its own.' },
-        before: { give: 'You’ll help people before they’ve ever done anything for you.', refuse: 'You tend to wait until someone has shown up for you before you go out of your way for them.' },
+        after: { give: 'After someone lends you a hand with a difficult week, you’d be likely to make time for a neighbor who needs help.', refuse: 'Even after someone has helped you out, you’d be willing to turn down a neighbor’s request for your free afternoon.' },
+        before: { give: 'Even when you’ve been managing on your own, you’d be likely to give a neighbor a hand carrying boxes upstairs.', refuse: 'When you’ve been managing on your own, you’d be inclined to keep your free afternoon if a neighbor asks for help.' },
       },
       contrast: {
-        'refuse|give': 'You hold back with people who haven’t helped you yet, and show up for those who have.',
-        'give|refuse': 'You’re generous with newcomers, but a past favor doesn’t earn someone more from you.',
-        'give|give': 'Whether or not someone has helped you before, you tend to help when asked.',
-        'refuse|refuse': 'Whether or not someone has helped you before, you tend to keep to your own.',
+        'refuse|give': 'When you’ve been managing on your own, you’d keep your free afternoon. After receiving some help, you’d be more likely to spend it helping a neighbor.',
+        'give|refuse': 'You’d make time to help a neighbor while you’re managing on your own, yet be more likely to keep that time after someone has helped you.',
+        'give|give': 'Whether you’ve had help yourself or been managing alone, you’d usually make time when a neighbor asks for a hand.',
+        'refuse|refuse': 'You’d usually keep your free afternoon when a neighbor asks for help, whether or not someone has recently helped you.',
       },
     },
   ];
 
-  const lower = (t) => t.charAt(0).toLowerCase() + t.slice(1);
   function impressions() {
     const out = [];
     for (const fam of FAMILIES) {
@@ -330,9 +331,9 @@ window.MMTI = window.MMTI || {};
         if (!b.stage) continue;
         const base = fam.scene ? fam.scene(cond, b.lean) : fam.scenes[cond][b.lean];
         cards.push({
-          key: `${fam.id}|${cond}|${b.lean}|${b.stage}`, family: fam.title, stage: b.stage,
-          text: b.stage === 'first' ? `It’s early, but ${lower(base)}` : base,
-          source: `${b.stage === 'first' ? 'A first impression' : 'A recurring pattern'} from ${b.n} choice${b.n === 1 ? '' : 's'} ${fam.conditions[cond]}. The situation is new; nothing in it was observed.`,
+          key: `${fam.id}|${cond}|${b.lean}|${b.stage}|${COPY_VERSION}`, family: fam.title, stage: b.stage,
+          text: base,
+          source: `I’m imagining this scene from ${b.n} choice${b.n === 1 ? '' : 's'} in the colony ${fam.conditions[cond]}. ${b.stage === 'first' ? 'It’s an early hunch; more choices may change it.' : 'The same preference has come up in more than one kind of situation.'}`,
           why: b.list.slice(-6).map((o) => o.why), last: b.list[b.list.length - 1].t,
         });
       }
@@ -342,9 +343,9 @@ window.MMTI = window.MMTI || {};
         const stage = b1.stage === 'pattern' && b2.stage === 'pattern' ? 'pattern' : 'first';
         const text = fam.contrast[`${b1.lean}|${b2.lean}`];
         cards.push({
-          key: `${fam.id}|contrast|${b1.lean}|${b2.lean}|${stage}`, family: fam.title, stage,
-          text: stage === 'first' ? `It’s early, but ${lower(text)}` : text,
-          source: `Compares ${b1.n} choice${b1.n === 1 ? '' : 's'} ${fam.conditions[c1]} with ${b2.n} ${fam.conditions[c2]}.`,
+          key: `${fam.id}|contrast|${b1.lean}|${b2.lean}|${stage}|${COPY_VERSION}`, family: fam.title, stage,
+          text,
+          source: `I’m comparing ${b1.n} choice${b1.n === 1 ? '' : 's'} ${fam.conditions[c1]} with ${b2.n} ${fam.conditions[c2]}. ${stage === 'first' ? 'This is still an early impression.' : 'Both sides of this pattern have come up in different situations.'}`,
           why: [...b1.list.slice(-3), ...b2.list.slice(-3)].map((o) => o.why), last: Math.max(b1.list[b1.list.length - 1].t, b2.list[b2.list.length - 1].t), contrast: true,
         });
       }
@@ -409,7 +410,7 @@ window.MMTI = window.MMTI || {};
     episodes: () => store.episodes,
     feedbackFor: (key) => [...store.feedback].reverse().find((f) => f.key === key) || null,
     addFeedback(rec) { store.feedback.push({ ...rec, at: new Date().toISOString(), ruleVersion: RULE_VERSION }); save(); },
-    exportData: () => ({ exportedAt: new Date().toISOString(), ruleVersion: RULE_VERSION, ...store }),
+    exportData: () => ({ exportedAt: new Date().toISOString(), ruleVersion: RULE_VERSION, copyVersion: COPY_VERSION, ...store }),
     reset() { store = fresh(); save(); },
   };
 })();
