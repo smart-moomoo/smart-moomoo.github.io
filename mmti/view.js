@@ -1056,6 +1056,8 @@
       case 'study': return j.stage === 'walk' ? 'Going to the research bench' : `Researching ${S().research.active ? M.RESEARCH[S().research.active].label.toLowerCase() : ''}`;
       case 'smoke': return fetching ? 'Fetching food to smoke' : j.stage === 'walk' ? 'Going to the smokehouse' : 'Smoking food';
       case 'flee': return 'Fleeing indoors';
+      case 'warmup': return j.stage === 'walk' ? 'Going to warm up' : 'Warming up by the fire';
+      case 'feed': { const pt = S().colonists.find((o) => o.id === j.patientId); return j.stage === 'fetch' ? 'Fetching food for someone who is down' : `Feeding ${pt ? pt.name : 'a patient'}`; }
       case 'hide': return 'Hiding from raiders';
       case 'firefight': return 'Fighting a fire';
       case 'bedrest': return 'Resting in bed with wounds';
@@ -1479,9 +1481,9 @@
         h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: () => step(k, 10) } }, '+10')))),
       h('p', { class: 'mm-kicker' }, 'What to ask for'),
       h('div', { class: 'mm-actions' }, kinds.map((k) => h('button', { type: 'button', class: `mm-btn mm-btn-s${arg.want === k ? ' is-on' : ''}`, on: { click: () => { arg.want = k; delete arg.give[k]; renderModal(); } } }, M.ITEMS[k].label))),
-      h('p', null, `Expected: about ${expect} ${M.ITEMS[arg.want].label.toLowerCase()}.`),
+      h('p', { class: expect < 1 ? 'mm-warn' : null }, expect < 1 ? `Not enough to buy any ${M.ITEMS[arg.want].label.toLowerCase()}: one is worth ${Math.ceil(M.TRADE_VALUE[arg.want] / q.tradeRate())} units of wood or potatoes at this rate.` : `Expected: about ${expect} ${M.ITEMS[arg.want].label.toLowerCase()}.`),
       h('div', { class: 'mm-actions' },
-        h('button', { type: 'button', class: 'mm-btn mm-btn-primary', disabled: !arg.picked.length || !value, on: { click: () => {
+        h('button', { type: 'button', class: 'mm-btn mm-btn-primary', disabled: !arg.picked.length || expect < 1, on: { click: () => {
           const r = order({ type: 'trade-send', members: arg.picked.slice(), give: { ...arg.give }, want: arg.want });
           if (r.ok) { closeModal(); setView('world'); select({ kind: 'world', what: 'trade' }); }
         } } }, 'Send the caravan')));

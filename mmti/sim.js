@@ -357,7 +357,7 @@ window.MMTI = window.MMTI || {};
     rival: (t) => `Of course ${t.who} is here.`, farhome: () => 'I want to go home.', road: () => 'Nothing like the open road.',
     restless: () => 'Same walls, same fields…', easy: () => 'No rush.', kindco: () => 'Thanks for the help.',
     rawfood: () => 'Raw potatoes again…', goodmeal: () => 'That was a good meal.', notable: () => 'Eating off my knees again.',
-    froze: () => 'I couldn’t feel my feet last night.', coldnight: () => 'That was a cold night.', slept: () => 'Slept well.',
+    froze: () => 'I couldn’t feel my feet last night.', fed: () => 'Thank you for the food.', coldnight: () => 'That was a cold night.', slept: () => 'Slept well.',
     ground: () => 'My back hurts from the ground.', rescued: () => 'I owe you all.', rescuer: () => 'We made it in time.',
     toolate: () => 'We were too late.', turnedaway: () => 'We should have helped them.', gaveup: () => 'We left them out there.',
     vented: () => 'Sorry. I needed that.', welcomed: () => 'Good to have another pair of hands.', helped: () => 'Glad we could help them.',
@@ -453,6 +453,17 @@ window.MMTI = window.MMTI || {};
   function tempAt(s, x, y) {
     const r = roomAt(x, y);
     return r && !r.outdoors ? r.temp : outdoorTemp(s);
+  }
+  // Standing within two tiles of a lit fire or heater keeps you warm even outdoors.
+  function feltTemp(s, x, y) {
+    const base = tempAt(s, x, y);
+    for (const th of s.things) if (heating(th) && Math.abs(th.x - x) <= 2 && Math.abs(th.y - y) <= 2) return base + 12;
+    return base;
+  }
+  function warmSpots(s) {
+    const spots = [];
+    for (const th of s.things) if (heating(th)) for (const [dx, dy] of DIRS8) spots.push({ x: th.x + dx, y: th.y + dy, exact: true });
+    return spots;
   }
   const heating = (th) => !!DEFS[th.type].heat && !th.bp && !th.broken && (DEFS[th.type].power ? th.powered : th.lit);
   function heatSourcesIn(s, roomId, countUnlit) {
@@ -687,6 +698,7 @@ window.MMTI = window.MMTI || {};
     for (const o of s.colonists) {
       if (o.resTend === c.id) o.resTend = null;
       if (o.resRescue === c.id) o.resRescue = null;
+      if (o.resFeed === c.id) o.resFeed = null;
       if (o.carriedBy === c.id) o.carriedBy = null;
     }
     for (const th of s.things) { if (th.res === c.id) th.res = null; if (th.resF === c.id) th.resF = null; if (th.resD === c.id) th.resD = null; }
@@ -722,12 +734,11 @@ window.MMTI = window.MMTI || {};
     const from = tileOf(c);
     const tgPath = pathTo(from, targets);
     if (!tgPath) return null;
-    const items = freeItems(s, itemPred);
+    const items = s.items.filter(itemPred);
     const itPath = pathTo(from, items);
     if (!itPath) return null;
     const tg = tgPath.tg;
     c.path = itPath.path;
-    itPath.tg.res = c.id;
     return { kind, targetId: tg.id != null ? tg.id : null, tile: tg.tile != null ? tg.tile : null, itemId: itPath.tg.id, need: amountFor(tg, itPath.tg), stage: 'fetch', work: 0, ...extra, _tg: tg };
   }
   function goJob(s, c, kind, targets, extra) {
@@ -747,6 +758,11 @@ window.MMTI = window.MMTI || {};
         const downed = s.colonists.filter((o) => o !== c && o.downed && !o.away && !o.carriedBy && !o.resRescue && !inBed(o) && safe(o) && freeBedFor(s, o));
         let j = goJob(s, c, 'rescue', downed.map((o) => ({ x: Math.round(o.x), y: Math.round(o.y), pid: o.id })));
         if (j) { j.patientId = j._tg.pid; colonistById(s, j.patientId).resRescue = c.id; return j; }
+        const hungry = s.colonists.filter((o) => o !== c && o.downed && !o.away && !o.carriedBy && !o.resFeed && o.food < 0.35);
+        if (hungry.length) {
+          const jf = fetchJob(s, c, 'feed', hungry.map((o) => ({ x: Math.round(o.x), y: Math.round(o.y), pid: o.id })), (it) => ITEMS[it.kind].food, (tg, it) => (it.kind === 'meal' ? 1 : 3));
+          if (jf) { jf.patientId = jf._tg.pid; colonistById(s, jf.patientId).resFeed = c.id; return jf; }
+        }
         const patients = s.colonists.filter((o) => !o.away && !o.carriedBy && !o.resTend && (o.injuries || []).some((i) => !i.tended)
           && (o.downed || (o.job && o.job.kind === 'bedrest' && o.job.stage === 'work')) && (o !== c || !o.downed));
         const targets = patients.map((o) => ({ x: Math.round(o.x), y: Math.round(o.y), pid: o.id, self: o === c }));
@@ -761,7 +777,8 @@ window.MMTI = window.MMTI || {};
         let j = goJob(s, c, 'build', ready);
         if (j) { j._tg.res = c.id; return j; }
         const needy = s.things.filter((th) => th.bp && !th.resD && (th.delivered || 0) < DEFS[th.type].cost);
-        j = fetchJob(s, c, 'deliver', needy, (it) => it.kind === 'wood', (tg) => Math.min(CARRY, DEFS[tg.type].cost - (tg.delivered || 0)));
+        const total = needy.reduce((a, th) => a + DEFS[th.type].cost - (th.delivered || 0), 0);
+        j = fetchJob(s, c, 'deliver', needy, (it) => it.kind === 'wood', () => Math.min(CARRY, total));
         if (j) byId.get(j.targetId).resD = c.id;
         return j;
       }
@@ -832,12 +849,11 @@ window.MMTI = window.MMTI || {};
   }
 
   function eatJob(s, c) {
-    const foods = freeItems(s, (it) => ITEMS[it.kind].food);
+    const foods = s.items.filter((it) => ITEMS[it.kind].food);
     const meals = foods.filter((it) => it.kind === 'meal');
     const res = pathTo(tileOf(c), meals.length ? meals : foods);
     if (!res) return null;
     c.path = res.path;
-    res.tg.res = c.id;
     const per = ITEMS[res.tg.kind].food;
     const need = res.tg.kind === 'meal' ? 1 : Math.max(1, Math.min(3, Math.ceil((0.95 - c.food) / per)));
     return { kind: 'eat', itemId: res.tg.id, need, stage: 'fetch', work: 0 };
@@ -889,12 +905,23 @@ window.MMTI = window.MMTI || {};
       return { kind: 'bedrest', targetId: null, stage: 'work', work: 0 };
     }
     if (c.food < 0.3) { const j = eatJob(s, c); if (j) return j; }
+    {
+      const [cx, cy] = tileOf(c);
+      if (c.cold > 0.15 && feltTemp(s, cx, cy) < 5) {
+        const j = goJob(s, c, 'warmup', warmSpots(s));
+        if (j) return j;
+      }
+    }
     if (c.rest < 0.15 || (isNight(s) && c.rest < 0.95)) {
       let bed = c.bed != null ? byId.get(c.bed) : null;
       if (!bed || bed.bp) {
         const owned = new Set(s.colonists.filter((o) => o !== c && o.bed != null).map((o) => o.bed));
         bed = s.things.find((th) => th.type === 'bed' && !th.bp && !owned.has(th.id)) || null;
         c.bed = bed ? bed.id : null;
+      }
+      if (bed && tempAt(s, bed.x, bed.y) < 0) {
+        const j = goJob(s, c, 'sleep', warmSpots(s));
+        if (j) return j;
       }
       const j = bed && goJob(s, c, 'sleep', [{ id: bed.id, x: bed.x, y: bed.y, exact: true }]);
       return j || { kind: 'sleep', targetId: null, stage: 'work', work: 0 };
@@ -942,15 +969,16 @@ window.MMTI = window.MMTI || {};
     const it = s.items.find((x) => x.id === j.itemId);
     if (!it) return endJob(s, c);
     const kind = it.kind, age = it.age;
+    if (j.kind === 'haul') it.res = null;
     const got = takeItem(s, it, j.need);
-    it.res = null;
+    if (!got) return endJob(s, c);
     c.carry = { kind, n: got, age };
     const from = tileOf(c);
     let res = null;
     if (j.kind === 'haul') {
       const spot = bfs(from[0], from[1], (x, y) => stockSet.has(idx(x, y)) && holdable(s, idx(x, y), kind));
       if (spot) { res = { path: spot.path }; j.tile = idx(spot.end[0], spot.end[1]); }
-    } else if (j.kind === 'tend') {
+    } else if (j.kind === 'tend' || j.kind === 'feed') {
       const pt = colonistById(s, j.patientId);
       res = pt ? pathTo(from, [{ x: Math.round(pt.x), y: Math.round(pt.y) }]) : null;
       if (pt && Math.round(pt.x) === from[0] && Math.round(pt.y) === from[1]) res = { path: [] };
@@ -1004,7 +1032,11 @@ window.MMTI = window.MMTI || {};
         c.sleeping = true;
         c.rest = Math.min(1, c.rest + dt / 7);
         const [bx, by] = tileOf(c);
-        j.minTemp = Math.min(j.minTemp == null ? 99 : j.minTemp, tempAt(s, bx, by));
+        j.minTemp = Math.min(j.minTemp == null ? 99 : j.minTemp, feltTemp(s, bx, by));
+        if (c.cold > 0.25 && feltTemp(s, bx, by) < 2) {
+          addMemory(s, c, 'froze', 'Woke up freezing', -10, 24);
+          return endJob(s, c);
+        }
         if ((!isNight(s) && c.rest >= 0.9) || c.food < 0.12) {
           const bed = structAt[idx(bx, by)];
           if (j.minTemp < 0) addMemory(s, c, 'froze', 'Froze in bed', -12, 24);
@@ -1015,7 +1047,7 @@ window.MMTI = window.MMTI || {};
         }
         return;
       }
-      case 'deliver':
+      case 'deliver': {
         if (th && th.bp && c.carry) {
           const need = DEFS[th.type].cost - (th.delivered || 0);
           const put = Math.min(need, c.carry.n);
@@ -1023,7 +1055,21 @@ window.MMTI = window.MMTI || {};
           c.carry.n -= put;
           if (c.carry.n <= 0) c.carry = null;
         }
+        if (th && th.resD === c.id) th.resD = null;
+        // Still carrying wood: take it on to the next plan that needs some.
+        if (c.carry) {
+          const next = s.things.filter((o) => o.bp && !o.resD && (o.delivered || 0) < DEFS[o.type].cost);
+          const res = pathTo(tileOf(c), next);
+          if (res && res.path.length < 30) {
+            res.tg.resD = c.id;
+            j.targetId = res.tg.id;
+            c.path = res.path;
+            j.stage = 'walk';
+            return;
+          }
+        }
         return endJob(s, c);
+      }
       case 'deliverRepair':
         if (th && th.broken && th.diagnosis && c.carry) {
           const need = HEATER_CAUSES[th.diagnosis].wood - (th.repairDelivered || 0);
@@ -1162,6 +1208,24 @@ window.MMTI = window.MMTI || {};
       case 'drafted':
         if (!c.drafted) endJob(s, c);
         return;
+      case 'warmup': {
+        j.work += dt;
+        const [wx, wy] = tileOf(c);
+        if (c.cold < 0.05 || j.work > 3 || feltTemp(s, wx, wy) < 5) endJob(s, c);
+        return;
+      }
+      case 'feed': {
+        const pt = colonistById(s, j.patientId);
+        if (!pt || !c.carry) return endJob(s, c);
+        j.work += dt;
+        if (j.work >= 0.3) {
+          pt.food = Math.min(1, pt.food + c.carry.n * ITEMS[c.carry.kind].food);
+          c.carry = null;
+          if (pt !== c) addMemory(s, pt, 'fed', `${c.name} fed me`, 4, 24);
+          endJob(s, c);
+        }
+        return;
+      }
       case 'hide':
       case 'flee':
         j.work += dt;
@@ -1247,7 +1311,7 @@ window.MMTI = window.MMTI || {};
     if (!c.sleeping) c.rest = Math.max(0, c.rest - dt / 18);
     c.food = Math.max(0, c.food - dt / 20);
     const [x, y] = tileOf(c);
-    const temp = tempAt(s, x, y);
+    const temp = feltTemp(s, x, y);
     // Awake colonists are dressed for the season; asleep in a freezing room they are not.
     if ((c.sleeping && temp < 0) || temp < -12) c.cold = Math.min(1, c.cold + dt * (has(c, 'hardy') ? 0.07 : 0.14) * Math.min(3, (5 - temp) / 5));
     else c.cold = Math.max(0, c.cold - dt * (temp > 12 ? 0.05 : 0.02));
@@ -2198,8 +2262,10 @@ window.MMTI = window.MMTI || {};
         const give = {};
         for (const [k, n] of Object.entries(cmd.give || {})) if (n > 0 && TRADE_VALUE[k] && k !== cmd.want) give[k] = Math.min(n, cnt[k]);
         if (!Object.values(give).some((n) => n > 0)) return fail('Choose goods to trade');
+        const worth = Object.entries(give).reduce((a, [k, n]) => a + n * TRADE_VALUE[k], 0);
+        if (Math.floor((worth * tradeRate(s)) / TRADE_VALUE[cmd.want]) < 1) return fail(`That load is not worth even one ${ITEMS[cmd.want].label.toLowerCase()}`);
         for (const [k, n] of Object.entries(give)) give[k] = takeFromStock(s, k, n);
-        for (const c of members) { endJob(s, c); c.duty = null; c.away = true; c.lastTripT = s.t; }
+        for (const c of members) { endJob(s, c); c.duty = null; c.drafted = false; c.moveTo = null; c.away = true; c.lastTripT = s.t; }
         s.trade = { members: members.map((c) => c.id), give, want: cmd.want, status: 'outbound', prog: 0 };
         if (M.observe && M.observe.logDecision) M.observe.logDecision('trade', { members: members.map((c) => c.name), give, want: cmd.want, goodwill: s.world.goodwill, stock: cnt }, s);
         letter(s, { kind: 'info', title: `A trade caravan left for ${NEIGHBOR}`, body: `${members.map((c) => c.name).join(' and ')} are carrying goods to ${NEIGHBOR}. Back in about ${Math.round(tradeLeg() * 2)} hours.`, focus: { world: 'trade' } });
@@ -2285,7 +2351,7 @@ window.MMTI = window.MMTI || {};
             candidates: eligible.map((c) => ({ name: c.name, traits: c.traits, mood: Math.round(c.mood), health: r2(health(c)), relations: relationsOf(s, c).map((r) => `${r.kind}:${r.other.name}`) })),
           }, s);
         }
-        for (const c of members) { endJob(s, c); c.duty = null; c.away = true; c.lastTripT = s.t; }
+        for (const c of members) { endJob(s, c); c.duty = null; c.drafted = false; c.moveTo = null; c.away = true; c.lastTripT = s.t; }
         s.caravan = { members: members.map((c) => c.id), route: ROUTES.start.slice(), seg: 0, prog: 0, status: 'outbound', clear: 0 };
         inc.stage = 'travel';
         for (const l of s.letters) if (l.forIncident === inc.id) { delete l.actions; l.read = true; }
@@ -2385,7 +2451,7 @@ window.MMTI = window.MMTI || {};
       if (c.blood == null) c.blood = 1;
       if (c.prio.doctor == null) c.prio.doctor = 3;
       if (c.skills.doctor == null) c.skills.doctor = 1;
-      c.carriedBy = null; c.resTend = null; c.resRescue = null;
+      c.carriedBy = null; c.resTend = null; c.resRescue = null; c.resFeed = null;
     }
     for (const c of s.colonists) {
       c.x = Math.round(c.x);
