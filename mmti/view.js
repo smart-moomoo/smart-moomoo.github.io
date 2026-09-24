@@ -18,7 +18,7 @@
   const ZONE_TOOLS = { stock: 'stock', grow: 'grow', healroot: 'grow', clearzone: 'clear' };
 
   let hadSave = false;
-  try { hadSave = !!localStorage.getItem('mmti-colony-v3'); } catch {}
+  try { hadSave = !!localStorage.getItem('mmti-colony-v4'); } catch {}
   M.load();
   const S = () => M.state;
 
@@ -359,6 +359,7 @@
     el.power,
     speedGroup,
     h('button', { type: 'button', class: 'mm-btn mm-btn-s', on: { click: openMenu } }, 'Menu'));
+  el.goal = h('div', { class: 'mm-goal', hidden: true });
   const stage = h('div', { class: 'mm-stage' }, canvas, el.letters, el.hover, el.toast);
 
   function toolButton(kind, label, sub) {
@@ -371,30 +372,42 @@
   const tools = h('div', { class: 'mm-tools' },
     el.archRow = h('div', { class: 'mm-toolrow' }),
     el.zoneRow = h('div', { class: 'mm-toolrow' }),
-    h('div', { class: 'mm-toolrow' }, h('span', { class: 'mm-toolhead' }, 'Orders'),
-      toolButton('chop', 'Chop'), toolButton('harvest', 'Pick berries'), toolButton('cancel', 'Cancel')),
-    h('div', { class: 'mm-toolrow mm-toolrow-views' },
-      el.viewBtn,
-      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('work') } }, 'Work'),
-      el.researchBtn = h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('research') } }, 'Research'),
-      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('reflect') } }, 'Archivist'),
-      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('chronicle') } }, 'Chronicle'),
-      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('evidence') } }, 'Evidence'),
-      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('propose') } }, 'Propose')),
+    el.orderRow = h('div', { class: 'mm-toolrow' }),
+    el.viewRow = h('div', { class: 'mm-toolrow mm-toolrow-views' }),
     el.tip);
   let toolSig = null;
+  el.researchBtn = h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('research') } }, 'Research');
   function renderToolRows() {
-    const sig = S().research.done.join();
+    const un = (k) => q.unlocked(k);
+    const it = q.intro() || {};
+    const sig = `${S().research.done.join()}|${(S().unlocks || []).join()}|${it.stage}`;
     if (sig === toolSig) return;
     toolSig = sig;
+    el.toolBtns.clear();
+    el.archRow.hidden = !un('architect');
     el.archRow.replaceChildren(h('span', { class: 'mm-toolhead' }, 'Architect'),
       ...M.BUILDABLE.filter((k) => q.canPlace(k)).map((k) => toolButton(k, M.DEFS[k].label, `${M.DEFS[k].cost} wood`)));
+    el.zoneRow.hidden = !un('zones');
     el.zoneRow.replaceChildren(...[h('span', { class: 'mm-toolhead' }, 'Zones'),
       toolButton('stock', 'Stockpile'), toolButton('grow', 'Field'), q.researched('herbalism') ? toolButton('healroot', 'Healroot field') : null, toolButton('clearzone', 'Remove zone')].filter(Boolean));
+    el.orderRow.replaceChildren(...[h('span', { class: 'mm-toolhead' }, 'Orders'),
+      un('pick') ? toolButton('harvest', 'Pick berries') : null, un('chop') ? toolButton('chop', 'Chop') : null, un('chop') ? toolButton('cancel', 'Cancel') : null].filter(Boolean));
+    const vb = (key, label, fn) => (un(key) ? h('button', { type: 'button', class: 'mm-btn', on: { click: fn } }, label) : null);
+    el.viewRow.replaceChildren(...[
+      un('world') ? el.viewBtn : null,
+      vb('work', 'Work', () => openModal('work')),
+      un('research') ? el.researchBtn : null,
+      un('archivist') || it.stage === 'reflect' ? h('button', { type: 'button', class: `mm-btn${it.stage === 'reflect' ? ' mm-glow' : ''}`, on: { click: () => openModal('reflect') } }, 'Archivist') : null,
+      vb('chronicle', 'Chronicle', () => openModal('chronicle')),
+      vb('evidence', 'Evidence', () => openModal('evidence')),
+      vb('propose', 'Propose', () => openModal('propose')),
+    ].filter(Boolean));
+    el.viewRow.hidden = !el.viewRow.children.length;
+    for (const [k, b] of el.toolBtns) b.classList.toggle('mm-glow', it.stage === 'order' && k === 'harvest');
     setTool(ui.tool);
   }
   renderToolRows();
-  root.replaceChildren(h('div', { class: 'mm' }, top, el.bar, stage, h('div', { class: 'mm-bottom' }, el.inspect, tools), el.modal));
+  root.replaceChildren(h('div', { class: 'mm' }, top, el.bar, el.goal, stage, h('div', { class: 'mm-bottom' }, el.inspect, tools), el.modal));
 
   // ---------- state changes ----------
   function setSpeed(i) {
@@ -524,6 +537,7 @@
     }
     if (best) return select({ kind: 'colonist', id: best.id });
     const th = q.thingAt(p.x, p.y);
+    if (th && th.type === 'keeper' && (q.intro() || {}).stage === 'reflect') { select({ kind: 'thing', id: th.id }); return openModal('reflect'); }
     if (th) return select({ kind: 'thing', id: th.id });
     select({ kind: 'tile', x: p.x, y: p.y });
   }
@@ -1000,6 +1014,9 @@
       g.lineWidth = 1;
       g.strokeRect(x0 * TS + 0.5, y0 * TS + 0.5, (x1 - x0 + 1) * TS - 1, (y1 - y0 + 1) * TS - 1);
     }
+    if ((q.intro() || {}).stage === 'order' && Math.floor(now / 500) % 2) {
+      for (const th of s.things) if (th.type === 'bush' && !th.des) brackets(g, th.x * TS - 1, th.y * TS - 1, TS + 2, TS + 2);
+    }
     if (ui.moveMark && ui.moveMark.until > performance.now()) brackets(g, ui.moveMark.x * TS + 3, ui.moveMark.y * TS + 3, 10, 10);
     const sel = ui.sel;
     if (sel && sel.kind === 'raider') {
@@ -1174,7 +1191,7 @@
             h('div', { class: 'mm-gizmos' },
               c.downed ? gizmo('Rescue now', () => { const r = order({ type: 'rescue', id: c.id }); if (r.ok) toast(`${r.rescuer} is going`); }, c.carriedBy ? 'Already being carried' : null)
                 : c.away ? null
-                  : [gizmo(c.drafted ? 'Release' : 'Draft', () => order({ type: 'draft', id: c.id, on: !c.drafted })),
+                  : !q.unlocked('draft') && !c.drafted ? null : [gizmo(c.drafted ? 'Release' : 'Draft', () => order({ type: 'draft', id: c.id, on: !c.drafted })),
                     c.drafted ? gizmo('Move…', () => setTool({ kind: 'move', id: c.id })) : null]),
             ths.length ? h('ul', { class: 'mm-thoughts' }, ths.slice(0, 6).map((t) => h('li', { class: t.value < 0 ? 'is-neg' : 'is-pos' }, h('span', null, t.label), h('b', null, `${t.value > 0 ? '+' : ''}${t.value}`)))) : null];
         },
@@ -1391,7 +1408,43 @@
     }
   }
 
+  let goalSig = '';
+  function updateGoal() {
+    const s = S(), it = s.intro || {};
+    if (!it.stage || it.stage === 'done') { el.goal.hidden = true; return; }
+    const courier = it.courier != null ? s.colonists.find((c) => c.id === it.courier) : null;
+    const lines = {
+      order: ['Dinner first.', 'Choose Pick berries below, then drag over the berry bushes in the southwest corner. You mark what needs doing; the colonists decide who does it.'],
+      watch: ['Now watch.', 'Someone will walk over and pick. Click a colonist to see what they are doing.'],
+      request: ['A runner has arrived.', 'Read the letter from Millbrook. Either answer is fine.'],
+      errand: ['Someone has to go.', 'Choose who makes the trip. Each person’s card says what it would mean for them.'],
+      'errand-out': [`${courier ? courier.name : 'The courier'} is on the road.`, `Back in about ${Math.max(0, Math.round(((it.returnAt || s.t) - s.t) * 60))} minutes. Press ▶▶ to speed up time.`],
+      reflect: ['Before bed, visit the Archivist.', 'Click her in the small hut, or press Archivist below. She has an early impression of you.'],
+    };
+    const [head, body] = lines[it.stage] || ['', ''];
+    const steps = [['Pick berries for dinner', it.stage !== 'order' && it.stage !== 'watch' || (it.picked || 0) > 0], ['Answer Millbrook', ['errand', 'errand-out', 'reflect'].includes(it.stage)], ['Send someone', ['errand-out', 'reflect'].includes(it.stage)], ['Hear the Archivist', false]];
+    const sig = `${it.stage}|${head}|${body}|${steps.map((x) => x[1]).join()}`;
+    if (sig === goalSig) return;
+    goalSig = sig;
+    el.goal.hidden = false;
+    el.goal.replaceChildren(
+      h('div', null, h('p', { class: 'mm-goal-title' }, 'Get everyone ready for tonight'),
+        h('ul', null, steps.map(([t, done]) => h('li', { class: done ? 'is-done' : null }, t)))),
+      h('div', null, h('p', { class: 'mm-goal-head' }, head), h('p', null, body),
+      h('button', { type: 'button', class: 'mm-link', on: { click: () => { if (confirm('Skip the first evening and open every control?')) { M.command({ type: 'intro-skip' }); goalSig = ''; toolSig = null; } } } }, 'Skip the introduction')));
+  }
+  const autoOpened = new Set();
+  function autoOpenLetters() {
+    if (ui.modal) return;
+    for (const l of S().letters) {
+      if (l.open && !l.read && !autoOpened.has(l.id)) { autoOpened.add(l.id); openLetter(l.id); return; }
+    }
+  }
+
   function updateUI() {
+    updateGoal();
+    autoOpenLetters();
+    renderToolRows();
     updateTop();
     updateBar();
     updateLetters();
@@ -1428,6 +1481,7 @@
     else if (m.kind === 'menu') node = menuModal();
     else if (m.kind === 'caravan') node = caravanModal(m.arg);
     else if (m.kind === 'research') node = researchModal();
+    else if (m.kind === 'errand') node = errandModal(m.arg);
     else if (m.kind === 'trade') node = tradeModal(m.arg);
     else if (m.kind === 'chronicle') node = chronicleModal();
     el.modal.replaceChildren(node);
@@ -1445,6 +1499,9 @@
     if (!l) return modalFrame('Letter', h('p', null, 'This letter is gone.'));
     const actions = (l.actions || []).map((a) => {
       let label = a.label;
+      if (a.cmd.type === 'open-errand') {
+        return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', on: { click: () => openModal('errand', { picked: null }) } }, a.label);
+      }
       if (a.cmd.type === 'caravan-send') {
         return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', disabled: q.eligibleForCaravan().length < 2, on: { click: () => openModal('caravan', { letterId: l.id, picked: [] }) } }, 'Choose who goes');
       }
@@ -1493,6 +1550,33 @@
     const hist = S().history.slice().reverse();
     return modalFrame('Chronicle',
       hist.length ? h('ul', { class: 'mm-chronicle' }, hist.map((e) => h('li', null, h('span', null, clock(e.t)), e.text))) : h('p', { class: 'mm-muted' }, 'Nothing worth writing down yet.'));
+  }
+
+  function errandModal(arg) {
+    const s = S(), it = s.intro || {};
+    const eligible = q.eligibleForCaravan();
+    const rows = eligible.map((c) => {
+      const info = q.candidateInfo(c);
+      const on = arg.picked === c.id;
+      const notes = [];
+      if (info.willing) notes.push('Enjoys the road: the walk will lift their mood.');
+      if (info.reluctant) notes.push('Would rather stay home: the trip will weigh on them.');
+      if (c.traits.includes('hardworker')) notes.push('Quick on their feet.');
+      if (c.job && !['wander', 'sleep'].includes(c.job.kind)) notes.push(`Busy ${activity(c).toLowerCase()}; that waits until they are back.`);
+      return h('button', { type: 'button', class: `mm-pick${on ? ' is-on' : ''}`, 'aria-pressed': String(on), on: { click: () => { arg.picked = c.id; renderModal(); } } },
+        h('strong', null, c.name),
+        h('span', { class: 'mm-traits' }, (c.traits || []).map((k) => h('span', { class: 'mm-trait', title: M.TRAITS[k].desc }, M.TRAITS[k].label))),
+        h('span', { class: 'mm-pick-note' }, notes.join(' ') || 'No strong feelings about the trip.'),
+        h('small', null, `Back in about ${Math.round(info.hours * 60)} minutes`));
+    });
+    const picked = eligible.find((c) => c.id === arg.picked);
+    return modalFrame('Who should go?',
+      h('p', null, it.accepted ? 'The meals need carrying to Millbrook before dark.' : 'The seed potatoes need fetching from Millbrook before dark.'),
+      h('div', { class: 'mm-picks' }, rows),
+      h('div', { class: 'mm-actions' }, h('button', { type: 'button', class: 'mm-btn mm-btn-primary', disabled: !picked, on: { click: () => {
+        const r = order({ type: 'errand-send', id: arg.picked });
+        if (r.ok) closeModal();
+      } } }, picked ? `Send ${picked.name}` : 'Choose someone')));
   }
 
   function researchModal() {
@@ -1569,6 +1653,9 @@
       h('p', null, 'Your colony saves automatically in this browser.'),
       h('div', { class: 'mm-actions' },
         h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.save(); toast('Saved'); closeModal(); } } }, 'Save now'),
+        (q.intro() || {}).stage !== 'done'
+          ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.command({ type: 'intro-skip' }); toolSig = null; goalSig = ''; closeModal(); } } }, 'Skip the introduction')
+          : h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.command({ type: 'unlock-all' }); toolSig = null; closeModal(); } } }, 'Show all controls'),
         h('button', { type: 'button', class: 'mm-btn', on: { click: () => {
           if (!confirm('Start a new colony? Your MMTI observations are kept.')) return;
           M.newColony();
@@ -1580,8 +1667,8 @@
   }
 
   function reflectModal() {
-    const m = O.computeModel();
-    const cards = O.portraitCards(m);
+    if ((q.intro() || {}).stage === 'reflect') { M.command({ type: 'intro-reflected' }); toolSig = null; goalSig = ''; }
+    const cards = O.familyCards();
     const keeper = document.createElement('canvas');
     keeper.width = 70;
     keeper.height = 70;
@@ -1589,35 +1676,38 @@
     kg.imageSmoothingEnabled = false;
     if (window.PixelArt) window.PixelArt.draw(kg, 'keeper_a', window.PixelArt.PEOPLE_PALETTE, 5);
     keeper.className = 'mm-keeper';
-    const idx = Math.min(ui.modal.arg || 0, Math.max(0, cards.length - 1));
-    const body = [h('div', { class: 'mm-keeper-row' }, keeper, h('p', { class: 'mm-speech' }, cards.length
-      ? 'I’ve been watching how you handle setbacks in the colony. Here is how I think you’d act somewhere else. Tell me whether it fits.'
-      : 'I don’t know you well enough yet. Keep looking after the colony and come back.'))];
+    const idx = Math.min((ui.modal.arg && ui.modal.arg.idx) || 0, Math.max(0, cards.length - 1));
+    const showWhy = !!(ui.modal.arg && ui.modal.arg.why);
+    const firstOnly = cards.length && cards.every((c) => c.stage === 'first');
+    const body = [h('div', { class: 'mm-keeper-row' }, keeper, h('p', { class: 'mm-speech' }, !cards.length
+      ? 'I don’t know you well enough yet. Keep looking after the colony and come back.'
+      : firstOnly
+        ? 'I’ve only watched you a little, so take this lightly. Here is how I think you might act somewhere else. Tell me whether it fits.'
+        : 'Here is how I think you’d act somewhere else. Some of it I’m surer of than the rest. Tell me whether it fits.'))];
     if (cards.length) {
       const card = cards[idx];
+      const nav = (d) => { ui.modal.arg = { idx: idx + d, why: false }; renderModal(); };
       body.push(h('div', { class: 'mm-portrait-card' },
-        h('p', { class: 'mm-kicker' }, `Your MMTI · inferred portrait ${idx + 1} of ${cards.length}`),
-        h('blockquote', null, `“${card.text}”`),
+        h('p', { class: 'mm-kicker' }, `${card.stage === 'first' ? 'First impression' : 'Recurring pattern'} · ${card.family} · ${idx + 1} of ${cards.length}`),
+        h('blockquote', { class: card.stage === 'first' ? 'is-first' : null }, `“${card.text}”`),
         h('p', { class: 'mm-muted' }, card.source),
-        feedbackRow(card, m),
+        h('button', { type: 'button', class: 'mm-link mm-link-dark', on: { click: () => { ui.modal.arg = { idx, why: !showWhy }; renderModal(); } } }, showWhy ? 'Hide why' : 'Why this impression?'),
+        showWhy ? h('ul', { class: 'mm-why' }, card.why.map((w) => h('li', null, w))) : null,
+        feedbackRow(card),
         h('div', { class: 'mm-actions mm-actions-split' },
-          h('button', { type: 'button', class: 'mm-btn', disabled: idx === 0, on: { click: () => { ui.modal.arg = idx - 1; renderModal(); } } }, '← Previous'),
-          h('button', { type: 'button', class: 'mm-btn', disabled: idx === cards.length - 1, on: { click: () => { ui.modal.arg = idx + 1; renderModal(); } } }, 'Next →'))));
+          h('button', { type: 'button', class: 'mm-btn', disabled: idx === 0, on: { click: () => nav(-1) } }, '← Previous'),
+          h('button', { type: 'button', class: 'mm-btn', disabled: idx === cards.length - 1, on: { click: () => nav(1) } }, 'Next →'))));
     }
-    const forming = O.DEADLINES.filter((d) => !m[d].released);
+    const forming = O.impressions().filter(({ branches }) => Object.values(branches).some((b) => !b.stage));
     if (forming.length) {
-      body.push(h('div', { class: 'mm-forming' }, h('p', { class: 'mm-kicker' }, 'Still forming'), forming.map((d) => {
-        const b = m[d];
-        const note = b.enough ? 'No clear pattern yet, so no description.' : `${Math.min(b.n, O.RELEASE.minEpisodes)} of ${O.RELEASE.minEpisodes} decisions · ${b.types.size} of ${O.RELEASE.minEventTypes} kinds of trouble`;
-        return h('div', { class: 'mm-progress' },
-          h('div', { class: 'mm-progress-top' }, h('span', null, d === 'urgent' ? 'With a deadline' : 'Without a deadline'), h('span', null, note)),
-          h('div', { class: 'mm-progress-bar' }, h('span', { style: `width:${Math.min(100, (b.n / O.RELEASE.minEpisodes) * 100)}%` })));
-      })));
+      body.push(h('div', { class: 'mm-forming' }, h('p', { class: 'mm-kicker' }, 'Still watching'),
+        h('ul', { class: 'mm-watching' }, forming.map(({ fam, branches }) => h('li', null, h('strong', null, fam.title),
+          h('span', null, Object.entries(branches).filter(([, b]) => !b.stage).map(([c, b]) => `${fam.conditions[c]}: ${b.n ? `${b.n} choice${b.n > 1 ? 's' : ''}, no clear lean yet` : 'not seen yet'}`).join(' · ')))))));
     }
     return modalFrame('The Archivist', ...body);
   }
 
-  function feedbackRow(card, m) {
+  function feedbackRow(card) {
     const prev = O.feedbackFor(card.key);
     let verdict = prev ? prev.verdict : null;
     const note = h('textarea', { class: 'mm-note', rows: '2', placeholder: 'Optional: what circumstance matters?', 'aria-label': 'Explanation' });
@@ -1625,7 +1715,7 @@
     const status = h('span', { class: 'mm-saved' }, prev ? 'Saved.' : '');
     const record = () => {
       if (!verdict) return;
-      O.addFeedback({ key: card.key, verdict, note: note.value.trim(), counts: Object.fromEntries(O.DEADLINES.map((d) => [d, { n: m[d].n, switches: m[d].switches }])) });
+      O.addFeedback({ key: card.key, verdict, note: note.value.trim(), stage: card.stage, family: card.family, why: card.why });
       status.textContent = 'Saved.';
     };
     const choices = [['fits', 'Fits'], ['doesnt_fit', 'Doesn’t fit'], ['depends', 'Depends']];
@@ -1642,6 +1732,13 @@
     return h('div', { class: 'mm-feedback' }, h('div', { class: 'mm-actions' }, buttons, status), note);
   }
 
+  function familyTable() {
+    return h('div', { class: 'mm-table-wrap' }, h('table', { class: 'mm-table' },
+      h('thead', null, h('tr', null, ['Question', 'Situation', 'Choices', 'Lean', 'Stage'].map((t) => h('th', null, t)))),
+      h('tbody', null, O.impressions().flatMap(({ fam, branches }) => Object.entries(branches).map(([c, b]) => h('tr', null,
+        h('td', null, fam.title), h('td', null, fam.conditions[c]), h('td', null, b.n ? `${b.n} (${b.a} ${fam.responses[0].replace('_', ' ')})` : '0'),
+        h('td', null, b.lean ? b.lean.replace('_', ' ') : '—'), h('td', null, b.stage === 'pattern' ? 'Recurring pattern' : b.stage === 'first' ? 'First impression' : 'Watching')))))));
+  }
   function evidenceModal() {
     const m = O.computeModel();
     const pct = (x) => `${Math.round(x * 100)}%`;
@@ -1649,6 +1746,9 @@
     const actionLabel = { 'build-stove': 'Planned a wood stove', 'build-campfire': 'Planned a campfire', repair: 'Ordered the repair', 'reroute-pass': 'Took the mountain pass', 'clear-road': 'Cleared the road' };
     const rel = (ep, t) => (t == null ? '—' : `+${(t - ep.startT).toFixed(1)}h`);
     return modalFrame('Evidence',
+      h('p', null, 'Each question the Archivist asks, the situations she compares, and what you did. A first impression needs one or two clear choices; a recurring pattern needs several, in more than one kind of situation, leaning at least 75% one way. Requests you let expire are not counted as refusals.'),
+      familyTable(),
+      h('h5', { class: 'mm-subhead' }, 'Setbacks in detail'),
       h('p', null, 'Every description traces back to these counts. Rule ', h('code', null, O.RULE_VERSION),
         ': the first order that commits to a next approach is the response. Before the report arrived means “changed plan first”; after reading the report means “waited for the report”. Estimates use (changes + 1) / (decisions + 2); a description needs 8 decisions across both kinds of trouble and at least 75% one way.'),
       h('div', { class: 'mm-table-wrap' }, h('table', { class: 'mm-table' },
@@ -1733,10 +1833,7 @@
   updateUI();
   draw(performance.now());
   requestAnimationFrame(frame);
-  if (!hadSave) {
-    const welcome = S().letters.find((l) => l.title === 'Welcome to the colony');
-    if (welcome) openLetter(welcome.id);
-  }
+
 
   M.debug = {
     render: () => { updateUI(); draw(performance.now()); },

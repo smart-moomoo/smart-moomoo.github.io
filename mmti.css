@@ -258,3 +258,28 @@
 .mm-chronicle { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
 .mm-chronicle li { display: grid; grid-template-columns: 120px 1fr; gap: 10px; }
 .mm-chronicle li span { color: var(--mm-muted); font-size: 12px; }
+
+.mm-goal { display: grid; grid-template-columns: minmax(170px, 230px) 1fr; gap: 4px 18px; padding: 8px 12px; background: #2b2717; border-bottom: 2px solid var(--mm-ink); border-left: 4px solid var(--mm-gold); line-height: 1.4; font-size: 13px; }
+.mm-chip[hidden] { display: none; }
+.mm-goal[hidden] { display: none; }
+.mm-goal p { margin: 0 0 4px; }
+.mm-goal-title { font-weight: 700; color: var(--mm-gold); font-size: 13px; }
+.mm-goal-head { font-weight: 700; margin-top: 6px !important; }
+.mm-goal ul { list-style: none; margin: 4px 0; padding: 0; }
+.mm-goal li::before { content: '☐ '; color: var(--mm-muted); }
+.mm-goal li.is-done { color: var(--mm-muted); text-decoration: line-through; }
+.mm-goal li.is-done::before { content: '☑ '; color: #6fe07a; }
+.mm-link { background: none; border: 0; padding: 0; margin-top: 4px; color: var(--mm-muted); font: 11px var(--sans); text-decoration: underline; cursor: pointer; }
+.mm-link-dark { color: #3d5a4f; font-size: 12px; margin: 0 0 8px; }
+.mm-glow { box-shadow: 0 0 0 2px var(--mm-gold), 0 0 12px 2px rgba(255, 210, 61, .6) !important; animation: mm-glow 1.2s ease-in-out infinite; }
+@keyframes mm-glow { 50% { box-shadow: 0 0 0 2px var(--mm-gold), 0 0 4px 0 rgba(255, 210, 61, .3); } }
+.mm-pick-note { font-size: 12px; color: var(--mm-text); }
+.mm-why { margin: 0 0 10px; padding-left: 18px; font-size: 12px; color: #4a463f; }
+.mm-why li { margin-bottom: 3px; }
+.mm-portrait-card blockquote.is-first { font-size: 20px; }
+.mm-watching { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 12px; }
+.mm-watching li { display: grid; gap: 1px; }
+.mm-watching span { color: #6b665c; }
+[hidden].mm-toolrow { display: none; }
+@media (prefers-reduced-motion: reduce) { .mm-glow { animation: none; } }
+@media (max-width: 720px) { .mm-goal { grid-template-columns: 1fr; } }
