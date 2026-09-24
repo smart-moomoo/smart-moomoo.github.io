@@ -65,177 +65,42 @@
     return `${SEASONS[Math.floor(d / 5)]} ${(d % 5) + 1} · ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   };
 
-  // ---------- sprites ----------
-  const cache = new Map();
-  function sprite(key, w, hh, draw) {
-    let c = cache.get(key);
+  // ---------- sprites (painted in art.js at RES art pixels per logical pixel) ----------
+  const A = M.art;
+  const RES = A.RES;
+  const SPR = A.SPR;
+  const colonistSprite = (c, frame, flip, headOnly) => A.colonist(c, frame, flip, headOnly);
+  const blit = (g, spr, x, y, w, hh) => g.drawImage(spr, x, y, w != null ? w : spr.lw, hh != null ? hh : spr.lh);
+  const RAIDER_LOOK = { name: 'raider', shirt: '#3a2a2a', hair: '#8a1c1c', hood: '#6e1e14' };
+  const iconCache = new Map();
+  function mk(key, draw) {
+    let c = iconCache.get(key);
     if (!c) {
       c = document.createElement('canvas');
-      c.width = w;
-      c.height = hh;
-      draw(c.getContext('2d'));
-      cache.set(key, c);
+      c.width = 16 * RES;
+      c.height = 16 * RES;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      draw(g);
+      c.lw = 16;
+      c.lh = 16;
+      iconCache.set(key, c);
     }
     return c;
   }
-
-  const SPR = {
-    tree: (v) => sprite(`tree${v}`, 16, 22, (g) => {
-      R(g, 6, 13, 4, 9, INK); R(g, 7, 13, 2, 8, '#6b4a23'); R(g, 7, 13, 1, 8, '#4a3218');
-      const ry = v ? 7 : 7.8;
-      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-        const dx = (x - 7.5) / 7.6, dy = (y - 7.5) / ry, d = dx * dx + dy * dy;
-        if (d > 1) continue;
-        let col = d > 0.78 ? '#1d3419' : x + y < 10 ? '#5ea447' : y > 10 || x > 11 ? '#2e5e27' : '#3f7f33';
-        const n = hash(x, y, v + 7);
-        if (col === '#3f7f33' && n < 0.15) col = '#5ea447';
-        else if (col === '#3f7f33' && n > 0.88) col = '#2e5e27';
-        R(g, x, y, 1, 1, col);
-      }
-    }),
-    bush: (ripe) => sprite(`bush${ripe}`, 16, 16, (g) => {
-      for (let y = 3; y < 16; y++) for (let x = 0; x < 16; x++) {
-        const dx = (x - 7.5) / 6.8, dy = (y - 10) / 5.4, d = dx * dx + dy * dy;
-        if (d > 1) continue;
-        let col = d > 0.72 ? '#1d3a19' : x + y < 14 ? '#5a9e45' : '#3f7d34';
-        if (col === '#3f7d34' && hash(x, y, 3) < 0.12) col = '#5a9e45';
-        R(g, x, y, 1, 1, col);
-      }
-      if (ripe) for (const [x, y] of [[4, 8], [9, 7], [11, 11], [6, 12], [8, 10]]) { R(g, x, y, 2, 2, '#d8323c'); R(g, x, y, 1, 1, '#ff9a9a'); }
-    }),
-    bed: () => sprite('bed', 16, 16, (g) => {
-      R(g, 1, 0, 14, 16, INK); R(g, 2, 1, 12, 14, '#7a5230'); R(g, 3, 2, 10, 4, '#f4efe4'); R(g, 3, 5, 10, 1, '#d8d0bf');
-      R(g, 3, 6, 10, 8, '#3d6f9e'); R(g, 3, 6, 10, 1, '#6a9bd0'); R(g, 3, 13, 10, 1, '#2c5277');
-    }),
-    table: () => sprite('table', 16, 16, (g) => {
-      R(g, 1, 3, 14, 9, INK); R(g, 2, 4, 12, 6, '#a8753f'); R(g, 2, 4, 12, 1, '#c48f55'); R(g, 2, 10, 12, 1, '#6e4726');
-      R(g, 2, 11, 3, 4, INK); R(g, 11, 11, 3, 4, INK); R(g, 3, 11, 1, 3, '#6e4726'); R(g, 12, 11, 1, 3, '#6e4726');
-    }),
-    heater: (on, f) => sprite(`heater${on}${f}`, 16, 16, (g) => {
-      R(g, 2, 2, 12, 13, INK); R(g, 3, 3, 10, 11, on ? '#a63d2e' : '#6e4a44'); R(g, 3, 3, 10, 2, on ? '#cf5a45' : '#86625b');
-      for (const y of [7, 9, 11]) R(g, 5, y, 6, 1, on ? (f ? '#ffc86b' : '#ff9a3d') : '#2e1c19');
-      R(g, 3, 14, 2, 2, INK); R(g, 11, 14, 2, 2, INK);
-    }),
-    stove: (f, lit = 1) => sprite(`stove${f}${lit}`, 16, 16, (g) => {
-      R(g, 6, 0, 4, 5, INK); R(g, 7, 0, 2, 4, '#4a4a4a'); R(g, 2, 4, 12, 11, INK); R(g, 3, 5, 10, 9, '#3a3a3a'); R(g, 3, 5, 10, 1, '#5a5a5a');
-      R(g, 5, 8, 6, 4, INK);
-      if (lit) { R(g, 6, 9, 4, 2, f ? '#ffb347' : '#ff7a2e'); R(g, 7 + f, 9, 1, 1, '#ffe08a'); } else R(g, 6, 10, 4, 1, '#4a4a4a');
-      R(g, 3, 14, 2, 2, INK); R(g, 11, 14, 2, 2, INK);
-    }),
-    campfire: (f, lit = 1) => sprite(`campfire${f}${lit}`, 16, 16, (g) => {
-      R(g, 2, 11, 12, 4, INK); R(g, 3, 12, 2, 2, '#8a8a82'); R(g, 6, 13, 2, 1, '#9a9a92'); R(g, 9, 12, 2, 2, '#8a8a82'); R(g, 12, 12, 1, 2, '#9a9a92');
-      R(g, 4, 10, 8, 2, lit ? '#6b4a23' : '#3a3a3a');
-      if (!lit) return;
-      const flame = f ? [[6, 5, 4, 5], [5, 7, 6, 3], [7, 3, 2, 2]] : [[5, 6, 5, 4], [6, 4, 4, 3], [8, 2, 1, 2]];
-      for (const [x, y, w, hh] of flame) R(g, x, y, w, hh, '#ff7a2e');
-      R(g, 7, 6, 2, 3, '#ffd35a');
-    }),
-    potato: () => sprite('potato', 16, 16, (g) => {
-      R(g, 3, 5, 10, 10, INK); R(g, 4, 6, 8, 8, '#b08a4a'); R(g, 4, 6, 8, 2, '#c9a466'); R(g, 5, 4, 6, 2, INK); R(g, 6, 4, 4, 1, '#8a6a34');
-      for (const [x, y] of [[5, 9], [8, 8], [10, 11], [6, 12]]) R(g, x, y, 2, 1, '#8a6a34');
-    }),
-    berries: () => sprite('berries', 16, 16, (g) => {
-      R(g, 2, 8, 12, 7, INK); R(g, 3, 9, 10, 5, '#a8753f'); R(g, 3, 11, 10, 1, '#8a5a2b');
-      for (const [x, y] of [[3, 6], [6, 5], [9, 6], [5, 7], [8, 7], [11, 7]]) { R(g, x, y, 2, 2, '#d8323c'); R(g, x, y, 1, 1, '#ff9a9a'); }
-    }),
-    meal: () => sprite('meal', 16, 16, (g) => {
-      R(g, 1, 8, 14, 6, INK); R(g, 2, 9, 12, 3, '#f4efe4'); R(g, 3, 12, 10, 1, '#d8d0bf');
-      R(g, 4, 6, 8, 4, INK); R(g, 5, 6, 6, 3, '#e0a040'); R(g, 6, 6, 2, 1, '#6fae47'); R(g, 9, 7, 1, 1, '#c0533a');
-    }),
-    bench: () => sprite('bench', 16, 16, (g) => {
-      R(g, 1, 4, 14, 8, INK); R(g, 2, 5, 12, 5, '#8a5f37'); R(g, 2, 5, 12, 1, '#a8753f'); R(g, 2, 12, 2, 3, INK); R(g, 12, 12, 2, 3, INK);
-      R(g, 4, 2, 4, 4, INK); R(g, 5, 3, 2, 2, '#f4efe4'); R(g, 9, 3, 4, 3, '#3d6f9e'); R(g, 9, 3, 4, 1, '#6a9bd0');
-    }),
-    smoker: (lit) => sprite(`smoker${lit}`, 16, 16, (g) => {
-      R(g, 2, 3, 12, 12, INK); R(g, 3, 4, 10, 10, '#7a5230'); R(g, 3, 4, 10, 2, '#9a6a3c'); R(g, 5, 8, 6, 4, INK); R(g, 6, 9, 4, 2, lit ? '#ff7a2e' : '#3a3a3a');
-      R(g, 7, 0, 2, 4, INK);
-    }),
-    windmill: (f) => sprite(`windmill${f}`, 16, 16, (g) => {
-      R(g, 6, 7, 4, 9, INK); R(g, 7, 8, 2, 8, '#c9c2b0');
-      const blades = f % 2 ? [[1, 6, 14, 2], [7, 0, 2, 14]] : [[2, 2, 3, 3], [11, 2, 3, 3], [2, 10, 3, 3], [11, 10, 3, 3]];
-      for (const [x, y, w, hh] of blades) R(g, x, y, w, hh, '#f4efe4');
-      R(g, 7, 6, 2, 2, '#c0533a');
-    }),
-    cooler: (on) => sprite(`cooler${on}`, 16, 16, (g) => {
-      R(g, 2, 3, 12, 11, INK); R(g, 3, 4, 10, 9, '#8fb8d8'); for (const y of [6, 8, 10]) R(g, 4, y, 8, 1, on ? '#dff2ff' : '#5a7890');
-    }),
-    eheater: (on) => sprite(`eheater${on}`, 16, 16, (g) => {
-      R(g, 2, 3, 12, 11, INK); R(g, 3, 4, 10, 9, '#6f6b64'); for (const y of [6, 8, 10]) R(g, 4, y, 8, 1, on ? '#ff9a3d' : '#3a3a3a'); R(g, 11, 1, 2, 3, '#ffd23d');
-    }),
-    barricade: () => sprite('barricade', 16, 16, (g) => {
-      R(g, 0, 6, 16, 9, INK); R(g, 1, 7, 14, 3, '#b5a37a'); R(g, 1, 11, 14, 3, '#a8966d'); R(g, 5, 7, 1, 7, INK); R(g, 10, 7, 1, 7, INK);
-    }),
-    trap: () => sprite('trap', 16, 16, (g) => {
-      for (const x of [3, 7, 11]) { R(g, x, 9, 2, 4, '#8d8a84'); R(g, x, 8, 2, 1, '#c9c2b0'); } R(g, 2, 13, 12, 1, '#5a3c20');
-    }),
-    preserved: () => sprite('preserved', 16, 16, (g) => {
-      R(g, 3, 3, 10, 12, INK); R(g, 4, 4, 8, 10, '#c9a466'); R(g, 4, 7, 8, 2, '#8a5a2b'); R(g, 5, 2, 6, 2, INK);
-    }),
-    healroot: (stage) => sprite(`heal${stage}`, 16, 16, (g) => {
-      if (stage === 0) { R(g, 7, 9, 2, 3, '#8fe0b0'); return; }
-      R(g, 7, 5, 2, 8, '#2f7a5f'); R(g, 4, 6, 3, 2, '#8fe0b0'); R(g, 9, 5, 3, 2, '#8fe0b0');
-      if (stage >= 2) { R(g, 5, 9, 2, 2, '#8fe0b0'); R(g, 9, 9, 2, 2, '#8fe0b0'); }
-      if (stage === 3) { R(g, 6, 2, 4, 3, '#f4efe4'); R(g, 7, 3, 2, 1, '#d8323c'); }
-    }),
-    medicine: () => sprite('medicine', 16, 16, (g) => {
-      R(g, 3, 5, 10, 9, INK); R(g, 4, 6, 8, 7, '#f4efe4'); R(g, 7, 7, 2, 5, '#d8323c'); R(g, 5, 8, 6, 2, '#d8323c');
-    }),
-    grave: () => sprite('grave', 16, 16, (g) => {
-      R(g, 3, 11, 10, 4, '#6b4a2b'); R(g, 5, 2, 6, 10, INK); R(g, 6, 3, 4, 9, '#9b968c'); R(g, 6, 3, 4, 1, '#b3ada2'); R(g, 7, 5, 2, 1, '#6f6b64'); R(g, 7, 7, 2, 1, '#6f6b64');
-    }),
-    fire: (f) => sprite(`fire${f}`, 16, 16, (g) => {
-      const shapes = f ? [[3, 6, 4, 9], [7, 2, 4, 13], [11, 7, 3, 8]] : [[2, 7, 4, 8], [6, 4, 5, 11], [11, 5, 3, 10]];
-      for (const [x, y, w, hh] of shapes) { R(g, x, y, w, hh, '#ff7a2e'); R(g, x + 1, y + 3, Math.max(1, w - 2), hh - 3, '#ffd35a'); }
-    }),
-    stockTile: () => sprite('stockTile', 16, 16, (g) => { g.fillStyle = 'rgba(255,214,110,.13)'; g.fillRect(0, 0, 16, 16); for (let i = 0; i < 16; i += 4) { R(g, i, 0, 2, 1, 'rgba(255,214,110,.5)'); R(g, 0, i, 1, 2, 'rgba(255,214,110,.5)'); } }),
-    soil: () => sprite('soil', 16, 16, (g) => { R(g, 0, 0, 16, 16, '#6b4a2b'); for (let y = 1; y < 16; y += 4) { R(g, 0, y, 16, 1, '#5a3c20'); R(g, 0, y + 1, 16, 1, '#7a5934'); } }),
-    crop: (stage) => sprite(`crop${stage}`, 16, 16, (g) => {
-      if (stage === 0) { R(g, 7, 9, 2, 3, '#6fae47'); return; }
-      if (stage === 1) { R(g, 7, 7, 2, 6, '#4f8a33'); R(g, 5, 7, 2, 2, '#6fae47'); R(g, 9, 6, 2, 2, '#6fae47'); return; }
-      R(g, 7, 4, 2, 9, '#3f7a2a'); R(g, 4, 5, 3, 3, '#5ea447'); R(g, 9, 4, 3, 3, '#5ea447'); R(g, 5, 9, 2, 2, '#4f8a33'); R(g, 9, 9, 3, 2, '#4f8a33');
-      if (stage === 3) { R(g, 3, 12, 3, 2, '#c9a466'); R(g, 10, 12, 3, 2, '#c9a466'); R(g, 3, 12, 3, 1, INK); R(g, 10, 12, 3, 1, INK); }
-    }),
-    keeper: () => sprite('keeper', 16, 16, (g) => {
-      if (window.PixelArt) window.PixelArt.draw(g, 'keeper_a', window.PixelArt.PEOPLE_PALETTE, 1, 1, 1);
-    }),
-    logs: () => sprite('logs', 16, 16, (g) => {
-      R(g, 1, 8, 14, 7, INK); R(g, 2, 9, 12, 5, '#8a5a2b'); R(g, 2, 9, 12, 1, '#a8753f'); R(g, 2, 9, 2, 5, '#c9a06a'); R(g, 2, 11, 12, 1, INK);
-      R(g, 4, 4, 9, 5, INK); R(g, 5, 5, 7, 3, '#8a5a2b'); R(g, 5, 5, 7, 1, '#a8753f'); R(g, 5, 5, 2, 3, '#c9a06a');
-    }),
-    crate: () => sprite('crate', 16, 16, (g) => {
-      R(g, 1, 6, 14, 9, INK); R(g, 2, 7, 12, 7, '#a06b3a'); R(g, 2, 7, 12, 1, '#c08850'); R(g, 2, 10, 12, 1, '#7a4f28');
-      for (const [x, y] of [[3, 3], [6, 2], [9, 3], [5, 4], [8, 4], [11, 4]]) { R(g, x, y, 2, 2, '#d8323c'); R(g, x, y, 1, 1, '#ff9a9a'); }
-      R(g, 2, 4, 12, 2, 'rgba(0,0,0,0)');
-    }),
-    axe: () => sprite('axe', 8, 8, (g) => { R(g, 1, 1, 6, 6, '#fffefa'); R(g, 2, 2, 1, 5, '#6b4a23'); R(g, 3, 2, 3, 3, '#6e6e6e'); R(g, 0, 0, 8, 1, INK); R(g, 0, 7, 8, 1, INK); R(g, 0, 0, 1, 8, INK); R(g, 7, 0, 1, 8, INK); }),
-    pick: () => sprite('pick', 8, 8, (g) => { R(g, 1, 1, 6, 6, '#fffefa'); R(g, 2, 3, 2, 2, '#d8323c'); R(g, 4, 2, 2, 2, '#d8323c'); R(g, 4, 4, 2, 2, '#c02030'); R(g, 0, 0, 8, 1, INK); R(g, 0, 7, 8, 1, INK); R(g, 0, 0, 1, 8, INK); R(g, 7, 0, 1, 8, INK); }),
-  };
-
-  const COL_A = ['...oooo...', '..ohhhho..', '.ohhhhhho.', '.ohsssssho', '.osesssseo', '.ossssssso', '..oossoo..', '.occcccco.', 'occcccccco', 'oscccccCso', '.occcccCo.', '.opppppppo', '.opo..opo.', '.obo..obo.'];
-  const COL_B = COL_A.slice(0, 12).concat(['..opoopo..', '..oboobo..']);
-  function colonistSprite(c, frame, flip, headOnly) {
-    return sprite(`c${c.shirt}${c.hair}${frame}${flip}${headOnly}`, 10, 14, (g) => {
-      const pal = { o: INK, h: c.hair, s: '#f0c39a', e: INK, c: c.shirt, C: shade(c.shirt, 0.72), p: '#3b3f58', b: '#2a2018' };
-      const rows = (frame ? COL_B : COL_A).slice(0, headOnly ? 6 : 14);
-      rows.forEach((row, y) => {
-        for (let x = 0; x < 10; x++) {
-          const ch = row[flip ? 9 - x : x];
-          if (ch !== '.') R(g, x, y, 1, 1, pal[ch]);
-        }
-      });
-    });
-  }
-
-  const RAIDER_LOOK = { shirt: '#3a2a2a', hair: '#8a1c1c' };
+  const cross = (g, col) => { for (let i = 4; i < 26; i++) { R(g, i, i, 3, 3, col); R(g, 29 - i, i, 3, 3, col); } };
 
   function iconCanvas(kind, scale = 2) {
     const src = spriteFor(kind);
     const c = document.createElement('canvas');
     c.width = src.width;
     c.height = src.height;
-    c.getContext('2d').drawImage(src, 0, 0);
-    c.style.width = `${src.width * scale / (src.height > 16 ? 1.4 : 1)}px`;
-    c.style.height = `${src.height * scale / (src.height > 16 ? 1.4 : 1)}px`;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(src, 0, 0);
+    const k = src.lh > 16 ? 16 / src.lh : 1;
+    c.style.width = `${src.lw * scale * k}px`;
+    c.style.height = `${src.lh * scale * k}px`;
     c.className = 'mm-icon';
     return c;
   }
@@ -243,8 +108,8 @@
     switch (kind) {
       case 'bed': return SPR.bed();
       case 'table': return SPR.table();
-      case 'stove': return SPR.stove(0);
-      case 'campfire': return SPR.campfire(0);
+      case 'stove': return SPR.stove(0, 1);
+      case 'campfire': return SPR.campfire(0, 1);
       case 'logs': return SPR.logs();
       case 'crate': return SPR.crate();
       case 'medicine': return SPR.medicine();
@@ -256,76 +121,28 @@
       case 'eheater': return SPR.eheater(1);
       case 'barricade': return SPR.barricade();
       case 'trap': return SPR.trap();
-      case 'healroot': return sprite('healicon', 16, 16, (g) => { g.drawImage(SPR.soil(), 0, 0); g.drawImage(SPR.healroot(2), 0, 0); });
       case 'potato': return SPR.potato();
       case 'meal': return SPR.meal();
       case 'berries': return SPR.berries();
-      case 'stock': return sprite('stockicon', 16, 16, (g) => { R(g, 1, 1, 14, 14, '#c9a55a'); R(g, 2, 2, 12, 12, '#3a3f44'); g.drawImage(SPR.logs(), 0, 0); });
-      case 'grow': return sprite('growicon', 16, 16, (g) => { g.drawImage(SPR.soil(), 0, 0); g.drawImage(SPR.crop(2), 0, 0); });
-      case 'clearzone': return sprite('clearzone', 16, 16, (g) => { R(g, 1, 1, 14, 14, '#6b4a2b'); for (let i = 2; i < 14; i++) { R(g, i, i, 2, 2, '#b23a2a'); R(g, 15 - i, i, 2, 2, '#b23a2a'); } });
-      case 'wall': return sprite('wallicon', 16, 16, (g) => drawWall(g, 0, 0, 0, 0));
-      case 'door': return sprite('dooricon', 16, 16, (g) => drawDoor(g, 0, 0));
+      case 'wall': return SPR.wall(0);
+      case 'door': return SPR.door();
       case 'chop': return SPR.tree(0);
       case 'harvest': return SPR.bush(true);
-      case 'cancel': return sprite('cancel', 16, 16, (g) => { for (let i = 2; i < 14; i++) { R(g, i, i, 2, 2, '#b23a2a'); R(g, 15 - i, i, 2, 2, '#b23a2a'); } });
-      default: return sprite('none', 16, 16, () => {});
+      case 'healroot': return mk('healicon', (g) => { g.drawImage(SPR.soil(), 0, 0); g.drawImage(SPR.healroot(2), 0, 0); });
+      case 'stock': return mk('stockicon', (g) => { R(g, 1, 1, 30, 30, '#c9a55a'); R(g, 3, 3, 26, 26, '#3a3f44'); g.drawImage(SPR.logs(), 0, 0); });
+      case 'grow': return mk('growicon', (g) => { g.drawImage(SPR.soil(), 0, 0); g.drawImage(SPR.crop(2), 0, 0); });
+      case 'clearzone': return mk('clearzone', (g) => { g.drawImage(SPR.soil(), 0, 0); cross(g, '#d8323c'); });
+      case 'cancel': return mk('cancel', (g) => cross(g, '#d8323c'));
+      default: return mk('none', () => {});
     }
-  }
-
-  function drawWall(g, px, py, x, y) {
-    R(g, px, py, 16, 16, '#6f6b64');
-    R(g, px, py, 16, 6, '#9b968c');
-    R(g, px, py, 16, 1, '#b3ada2');
-    R(g, px, py + 6, 16, 1, '#57544e');
-    R(g, px, py + 10, 16, 1, '#5d5a54');
-    R(g, px + ((x + y) % 2 ? 4 : 10), py + 7, 1, 3, '#5d5a54');
-    R(g, px + ((x + y) % 2 ? 10 : 4), py + 11, 1, 5, '#5d5a54');
-    R(g, px, py + 15, 16, 1, '#3f3c38');
-  }
-  function drawDoor(g, px, py) {
-    R(g, px, py, 16, 16, '#4a2e17');
-    R(g, px + 2, py + 1, 12, 15, '#8a5a2b');
-    R(g, px + 2, py + 5, 12, 1, '#6e4520');
-    R(g, px + 2, py + 10, 12, 1, '#6e4520');
-    R(g, px + 11, py + 8, 2, 2, '#e0b64a');
   }
 
   // ---------- terrain ----------
   let terrainCanvas = null, terrainVersion = 0;
-  function buildTerrain() {
-    const s = S();
-    const c = document.createElement('canvas');
-    c.width = CW;
-    c.height = CH;
-    const g = c.getContext('2d');
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const t = s.terrain[y * W + x], px = x * TS, py = y * TS;
-      const spk = (n, cols) => { for (let k = 0; k < n; k++) R(g, px + Math.floor(hash(x, y, k) * 16), py + Math.floor(hash(x, y, k + 40) * 16), 1, 1, cols[k % cols.length]); };
-      if (t === M.T.GRASS) {
-        R(g, px, py, TS, TS, '#5e9a3d');
-        spk(9, ['#6eae4a', '#4f8733', '#68a545']);
-        if (hash(x, y, 99) < 0.08) R(g, px + 6 + Math.floor(hash(x, y, 98) * 5), py + 5 + Math.floor(hash(x, y, 97) * 6), 1, 1, hash(x, y, 96) < 0.5 ? '#f1d24a' : '#f4f0e8');
-        if (hash(x, y, 95) < 0.3) { const tx = px + Math.floor(hash(x, y, 94) * 13), ty = py + Math.floor(hash(x, y, 93) * 12); R(g, tx, ty, 1, 2, '#78b953'); R(g, tx + 2, ty + 1, 1, 2, '#78b953'); }
-      } else if (t === M.T.DIRT) {
-        R(g, px, py, TS, TS, '#8b6b45');
-        spk(10, ['#9a7a51', '#77593a', '#a89a86']);
-      } else if (t === M.T.SAND) {
-        R(g, px, py, TS, TS, '#d7c38a');
-        spk(8, ['#c8b27a', '#e3d29c']);
-      } else if (t === M.T.WATER) {
-        R(g, px, py, TS, TS, '#3a75ad');
-        spk(5, ['#336a9e', '#4581b8']);
-      } else if (t === M.T.FLOOR) {
-        R(g, px, py, TS, TS, '#a9784a');
-        for (const ly of [0, 4, 8, 12]) { R(g, px, py + ly, TS, 1, '#b98755'); R(g, px, py + ly + 3, TS, 1, '#8b5e36'); }
-        for (const [ly, sx] of [[0, (x * 5) % 16], [4, (x * 5 + 7) % 16], [8, (x * 5 + 3) % 16], [12, (x * 5 + 11) % 16]]) R(g, px + sx, py + ly, 1, 4, '#8b5e36');
-      }
-    }
-    terrainCanvas = c;
-  }
+  function buildTerrain() { terrainCanvas = A.terrainCanvas(S().terrain, W, H, M.T, TS); }
 
   // ---------- DOM ----------
-  const canvas = h('canvas', { class: 'mm-canvas', width: CW, height: CH, 'aria-label': 'Colony map' });
+  const canvas = h('canvas', { class: 'mm-canvas', width: CW * M.art.RES, height: CH * M.art.RES, 'aria-label': 'Colony map' });
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   const el = {
@@ -604,9 +421,10 @@
   let worldBg = null;
   function buildWorldBg() {
     const c = document.createElement('canvas');
-    c.width = 768;
-    c.height = 480;
+    c.width = 768 * RES;
+    c.height = 480 * RES;
     const g = c.getContext('2d');
+    g.scale(RES, RES);
     for (let y = 0; y < 480; y += 8) for (let x = 0; x < 768; x += 8) R(g, x, y, 8, 8, ((x + y) / 8) % 2 ? '#7aa257' : '#82ab5e');
     for (let y = 0; y < 480; y += 4) for (let x = 0; x < 768; x += 4) if (hash(x, y, 5) < 0.05) R(g, x, y, 2, 2, '#6c9449');
     const river = (y) => 404 + Math.sin(y / 60) * 18;
@@ -648,7 +466,7 @@
   function drawWorldScaled(now) {
     const s = S(), g = ctx, inc = s.incident, cv = s.caravan;
     if (!worldBg) buildWorldBg();
-    g.drawImage(worldBg, 0, 0);
+    g.drawImage(worldBg, 0, 0, 768, 480);
     const blockedNow = cv && cv.status === 'blocked';
     const passSel = ui.sel && ui.sel.kind === 'world' && ui.sel.what === 'pass';
     if (blockedNow || passSel) dotted(g, M.ROUTES.pass, 'rgba(255,240,180,.55)', 5, 6);
@@ -773,14 +591,14 @@
   function drawThing(g, th, now) {
     const px = th.x * TS, py = th.y * TS;
     if (th.bp) g.globalAlpha = 0.45;
-    if (th.type === 'wall') drawWall(g, px, py, th.x, th.y);
-    else if (th.type === 'door') drawDoor(g, px, py);
+    if (th.type === 'wall') blit(g, SPR.wall((th.x + th.y) % 2), px, py);
+    else if (th.type === 'door') blit(g, SPR.door(), px, py);
     else if (th.type === 'tree') {
       const gr = th.growth == null ? 1 : th.growth;
-      if (gr >= 0.5) g.drawImage(SPR.tree(th.variant || 0), px, py - 6);
+      if (gr >= 0.5) blit(g, SPR.tree(th.variant || 0), px, py - 6);
       else g.drawImage(SPR.tree(th.variant || 0), px + 4, py + 4 - 3, 8, 11);
     }
-    else { const sp = thingSprite(th, now); if (sp) g.drawImage(sp, px, py); }
+    else { const sp = thingSprite(th, now); if (sp) blit(g, sp, px, py); }
     g.globalAlpha = 1;
     if (th.bp) {
       g.fillStyle = 'rgba(90,160,255,.28)';
@@ -792,8 +610,8 @@
   function drawOverlays(g, th, now) {
     const px = th.x * TS, py = th.y * TS;
     if (th.bp && th.progress > 0) bar(g, px + 1, py - 4, th.progress / M.DEFS[th.type].work, '#8cc4ff');
-    if (th.des === 'chop') g.drawImage(SPR.axe(), px, py - 6);
-    if (th.des === 'harvest') g.drawImage(SPR.pick(), px, py - 2);
+    if (th.des === 'chop') blit(g, SPR.axe(), px, py - 6);
+    if (th.des === 'harvest') blit(g, SPR.pick(), px, py - 2);
     if (th.type === 'tree' && th.progress > 0) bar(g, px + 1, py - 9, th.progress / 1.2, '#e0b64a');
     const fd = M.DEFS[th.type];
     if (fd.fuelCap && !th.bp) {
@@ -835,21 +653,21 @@
     g.save();
     g.translate(px + 15, py + 5);
     g.rotate(Math.PI / 2);
-    g.drawImage(colonistSprite(look, 0, false, false), 0, 0);
+    blit(g, colonistSprite(look, 0, false, false), 0, 0);
     g.restore();
   }
   function drawColonist(g, c, now) {
     const px = Math.round(c.x * TS), py = Math.round(c.y * TS);
     if (c.downed) {
       const onBed = q.thingAt(Math.round(c.x), Math.round(c.y));
-      if (onBed && onBed.type === 'bed' && !c.carriedBy) g.drawImage(colonistSprite(c, 0, false, true), px + 3, py);
+      if (onBed && onBed.type === 'bed' && !c.carriedBy) blit(g, colonistSprite(c, 0, false, true), px + 3, py);
       else drawLying(g, c, px, c.carriedBy ? py - 8 : py + 2);
       if (c.injuries.some((i) => !i.tended && i.bleed > 0)) { R(g, px + 12, py - 2, 3, 4, INK); R(g, px + 13, py - 1, 1, 2, '#d8323c'); }
       return;
     }
     const bedHere = c.sleeping && q.thingAt(Math.round(c.x), Math.round(c.y));
     if (c.sleeping && bedHere && bedHere.type === 'bed') {
-      g.drawImage(colonistSprite(c, 0, false, true), px + 3, py);
+      blit(g, colonistSprite(c, 0, false, true), px + 3, py);
       const ph = (now / 1600) % 1;
       g.fillStyle = `rgba(255,255,255,${1 - ph})`;
       g.font = 'bold 7px monospace';
@@ -860,7 +678,7 @@
     const frame = moving ? Math.floor(now / 160) % 2 : 0;
     g.fillStyle = 'rgba(0,0,0,.28)';
     g.fillRect(px + 3, py + 14, 10, 2);
-    g.drawImage(colonistSprite(c, frame, c.facing < 0, false), px + 3, py + 1 - (moving && frame ? 1 : 0));
+    blit(g, colonistSprite(c, frame, c.facing < 0, false), px + 3, py + 1 - (moving && frame ? 1 : 0));
     if (c.carry) g.drawImage(itemSprite(c.carry.kind), px + 4, py - 5, 9, 9);
     const prog = jobProgress(c);
     if (prog != null) bar(g, px + 1, py - 4, prog, '#ffd23d');
@@ -874,7 +692,7 @@
     const frame = moving ? Math.floor(now / 160) % 2 : 0;
     g.fillStyle = 'rgba(0,0,0,.28)';
     g.fillRect(px + 3, py + 14, 10, 2);
-    g.drawImage(colonistSprite(RAIDER_LOOK, frame, (r.facing || -1) < 0, false), px + 3, py + 1);
+    blit(g, colonistSprite(RAIDER_LOOK, frame, (r.facing || -1) < 0, false), px + 3, py + 1);
     if (r.hp < 1) bar(g, px + 1, py - 4, r.hp, '#d8323c');
     if (r.carry) g.drawImage(itemSprite(r.carry.kind), px + 4, py - 9, 9, 9);
   }
@@ -882,7 +700,7 @@
   function drawMap(now) {
     const s = S(), g = ctx;
     if (!terrainCanvas || terrainVersion !== (s.terrainVersion || 0)) { terrainVersion = s.terrainVersion || 0; buildTerrain(); }
-    g.drawImage(terrainCanvas, 0, 0);
+    g.drawImage(terrainCanvas, 0, 0, CW, CH);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       if (s.terrain[y * W + x] !== M.T.WATER) continue;
       const k = hash(x, y, 1);
@@ -891,16 +709,16 @@
     }
     for (const [k, p] of Object.entries(s.zones.grow)) {
       const i = Number(k), px = (i % W) * TS, py = ((i / W) | 0) * TS;
-      g.drawImage(SPR.soil(), px, py);
+      blit(g, SPR.soil(), px, py);
       const st = p.growth >= 1 ? 3 : p.growth > 0.6 ? 2 : p.growth > 0.25 ? 1 : 0;
-      if (p.sown) g.drawImage(p.crop === 'healroot' ? SPR.healroot(st) : SPR.crop(st), px, py);
+      if (p.sown) blit(g, p.crop === 'healroot' ? SPR.healroot(st) : SPR.crop(st), px, py);
       else if (p.crop === 'healroot') R(g, px + 7, py + 7, 2, 2, '#8fe0b0');
     }
-    for (const i of s.zones.stock) g.drawImage(SPR.stockTile(), (i % W) * TS, ((i / W) | 0) * TS);
+    for (const i of s.zones.stock) blit(g, SPR.stockTile(), (i % W) * TS, ((i / W) | 0) * TS);
     g.font = 'bold 6px sans-serif';
     for (const it of s.items) {
       const px = it.x * TS, py = it.y * TS;
-      g.drawImage(itemSprite(it.kind), px, py);
+      blit(g, itemSprite(it.kind), px, py);
       const label = String(it.n);
       g.fillStyle = 'rgba(23,21,18,.85)';
       g.fillRect(px + 15 - label.length * 4, py + 10, label.length * 4 + 1, 6);
@@ -922,7 +740,7 @@
     for (const k of Object.keys(s.fires || {})) {
       const i = Number(k), f = s.fires[k];
       g.globalAlpha = Math.min(1, 0.5 + f.i / 2);
-      g.drawImage(SPR.fire((ff + i) % 2), (i % W) * TS, ((i / W) | 0) * TS);
+      blit(g, SPR.fire((ff + i) % 2), (i % W) * TS, ((i / W) | 0) * TS);
       g.globalAlpha = 1;
     }
     for (const sh of s.shots || []) {
@@ -997,9 +815,7 @@
       if (M.BUILDABLE.includes(ui.tool.kind)) {
         const okHere = q.canBuild(ui.tool.kind, x, y);
         g.globalAlpha = 0.6;
-        if (ui.tool.kind === 'wall') drawWall(g, x * TS, y * TS, x, y);
-        else if (ui.tool.kind === 'door') drawDoor(g, x * TS, y * TS);
-        else g.drawImage(spriteFor(ui.tool.kind), x * TS, y * TS);
+        blit(g, spriteFor(ui.tool.kind), x * TS, y * TS);
         g.globalAlpha = 1;
         g.fillStyle = okHere ? 'rgba(111,224,122,.3)' : 'rgba(216,50,60,.35)';
         g.fillRect(x * TS, y * TS, TS, TS);
@@ -1032,7 +848,20 @@
     } else if (sel && sel.kind === 'tile') brackets(g, sel.x * TS, sel.y * TS, TS, TS);
   }
 
+  // Crisp pixels when the canvas is enlarged; smooth scaling when it is shrunk, so no art pixels are dropped.
+  let lastFit = '';
+  function fitRendering() {
+    const w = canvas.getBoundingClientRect().width;
+    if (!w) return;
+    const mode = (w * (window.devicePixelRatio || 1)) / canvas.width >= 0.999 ? 'pixelated' : 'auto';
+    if (mode !== lastFit) { lastFit = mode; canvas.style.imageRendering = mode; }
+  }
+  window.addEventListener('resize', fitRendering);
+
   function draw(now) {
+    fitRendering();
+    ctx.setTransform(RES, 0, 0, RES, 0, 0);
+    ctx.imageSmoothingEnabled = false;
     if (ui.view === 'map') drawMap(now);
     else drawWorld(now);
   }
@@ -1092,8 +921,8 @@
     lastBarSig = sig;
     el.bar.replaceChildren(...s.colonists.map((c) => {
       const pic = document.createElement('canvas');
-      pic.width = 10;
-      pic.height = 14;
+      pic.width = 20;
+      pic.height = 28;
       pic.getContext('2d').drawImage(colonistSprite(c, 0, false, false), 0, 0);
       pic.className = 'mm-portrait';
       const on = ui.sel && ui.sel.kind === 'colonist' && ui.sel.id === c.id;
@@ -1670,11 +1499,11 @@
     if ((q.intro() || {}).stage === 'reflect') { M.command({ type: 'intro-reflected' }); toolSig = null; goalSig = ''; }
     const cards = O.familyCards();
     const keeper = document.createElement('canvas');
-    keeper.width = 70;
-    keeper.height = 70;
+    keeper.width = 64;
+    keeper.height = 64;
     const kg = keeper.getContext('2d');
     kg.imageSmoothingEnabled = false;
-    if (window.PixelArt) window.PixelArt.draw(kg, 'keeper_a', window.PixelArt.PEOPLE_PALETTE, 5);
+    kg.drawImage(SPR.keeper(), 0, 0, 64, 64);
     keeper.className = 'mm-keeper';
     const idx = Math.min((ui.modal.arg && ui.modal.arg.idx) || 0, Math.max(0, cards.length - 1));
     const showWhy = !!(ui.modal.arg && ui.modal.arg.why);
