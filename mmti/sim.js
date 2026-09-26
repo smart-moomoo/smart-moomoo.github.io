@@ -38,7 +38,7 @@ window.MMTI = window.MMTI || {};
     table: { label: 'Table', cost: 10, work: 1 },
     campfire: { label: 'Campfire', cost: 10, work: 1.5, heat: 30, fuelCap: 6, burnH: 3, always: true, cook: true, startFuel: 3 },
     stove: { label: 'Wood stove', cost: 20, work: 3, heat: 45, fuelCap: 10, burnH: 4, cook: true, startFuel: 4 },
-    heater: { label: 'Heater', heat: 45, fuelCap: 10, burnH: 4 },
+    heater: { label: 'Heater', heat: 45, fuelCap: 10, burnH: 5 },
     tree: { label: 'Tree', natural: true },
     bush: { label: 'Berry bush', natural: true },
     keeper: { label: 'The Archivist' },
@@ -230,7 +230,8 @@ window.MMTI = window.MMTI || {};
 
     for (let y = 15; y <= 16; y++) for (let x = 15; x <= 20; x++) s.zones.stock.push(idx(x, y));
     for (let y = 8; y <= 10; y++) for (let x = 28; x <= 32; x++) s.zones.grow[idx(x, y)] = { sown: false, growth: 0 };
-    s.items.push({ id: s.nextId++, kind: 'wood', n: 60, x: 15, y: 15, age: 0 });
+    s.items.push({ id: s.nextId++, kind: 'wood', n: 75, x: 15, y: 15, age: 0 });
+    s.items.push({ id: s.nextId++, kind: 'wood', n: 15, x: 15, y: 16, age: 0 });
     s.items.push({ id: s.nextId++, kind: 'potato', n: 30, x: 16, y: 15, age: 0 });
     s.items.push({ id: s.nextId++, kind: 'meal', n: 8, x: 17, y: 15, age: 0 });
     s.items.push({ id: s.nextId++, kind: 'medicine', n: 5, x: 18, y: 15, age: 0 });
@@ -530,7 +531,11 @@ window.MMTI = window.MMTI || {};
     for (const th of s.things) {
       const d = DEFS[th.type];
       if (!d.fuelCap || th.bp) continue;
-      const wants = !th.broken && (th.type === 'smoker' ? !!th.busy : d.always || out < 18);
+      // Fires burn only when they are needed: cooking, cold weather, and (for the campfire) evenings.
+      const hr = s.t % 24;
+      const wants = !th.broken && (th.type === 'smoker' ? !!th.busy
+        : th.type === 'campfire' ? !!th.busy || hr >= 19 || hr < 7 || out < 14
+          : !!th.busy || out < 16);
       th.lit = wants && th.fuel > 0;
       if (th.lit) th.fuel = Math.max(0, th.fuel - dt / d.burnH);
       if (wants && th.fuel <= 0 && !th.outWarned) {
@@ -691,7 +696,7 @@ window.MMTI = window.MMTI || {};
       if (o.resFeed === c.id) o.resFeed = null;
       if (o.carriedBy === c.id) o.carriedBy = null;
     }
-    for (const th of s.things) { if (th.res === c.id) th.res = null; if (th.resF === c.id) th.resF = null; if (th.resD === c.id) th.resD = null; }
+    for (const th of s.things) { if (th.res === c.id) { th.res = null; th.busy = false; } if (th.resF === c.id) th.resF = null; if (th.resD === c.id) th.resD = null; }
     for (const it of s.items) if (it.res === c.id) it.res = null;
     for (const [k, v] of growRes) if (v === c.id) growRes.delete(k);
   }
@@ -860,7 +865,7 @@ window.MMTI = window.MMTI || {};
       return { kind: 'drafted', targetId: null, stage: 'work', work: 0 };
     }
     // While raiders are on the map, undrafted colonists shelter indoors; fighting is a choice made by drafting.
-    if ((s.raiders || []).length) {
+    if ((s.raiders || []).length || (s.raid && !s.raid.spawned && s.t >= s.raid.arriveAt - 0.5)) {
       const [cx, cy] = tileOf(c);
       const here = roomAt(cx, cy);
       if (!here || here.outdoors) {
@@ -1149,6 +1154,7 @@ window.MMTI = window.MMTI || {};
         return;
       case 'cook':
         if (!th || !(th.fuel > 0) || !c.carry) return endJob(s, c);
+        th.busy = true;
         j.work += dt * c.skills.cook * wf;
         if (j.work >= 0.6) {
           c.carry = null;
@@ -1193,7 +1199,7 @@ window.MMTI = window.MMTI || {};
         if (!th || th.des !== 'chop') return endJob(s, c);
         th.progress = (th.progress || 0) + dt * plantSkill(c) * wf;
         if (th.progress >= 1.2) {
-          const wood = Math.max(1, Math.round(10 * (th.growth == null ? 1 : th.growth)));
+          const wood = Math.max(1, Math.round(12 * (th.growth == null ? 1 : th.growth)));
           s.things.splice(s.things.indexOf(th), 1);
           reindex(s);
           endJob(s, c);
@@ -1340,7 +1346,7 @@ window.MMTI = window.MMTI || {};
     if (frost) s.warn.frost = (s.warn.frost || 0) + frost;
     for (const th of s.things) {
       if (th.type === 'bush' && !th.berries && s.t >= th.regrowAt && out > 5) th.berries = true;
-      if (th.type === 'tree' && th.growth != null && th.growth < 1 && out > 5) th.growth = Math.min(1, th.growth + dt / 120);
+      if (th.type === 'tree' && th.growth != null && th.growth < 1 && out > 5) th.growth = Math.min(1, th.growth + dt / 72);
     }
   }
 
@@ -1364,16 +1370,16 @@ window.MMTI = window.MMTI || {};
       };
       letter(s, { kind: cal.season === 'Fall' || cal.season === 'Winter' ? 'threat' : 'info', title: `${cal.season} has begun`, body: notes[cal.season] });
     }
-    if (cal.season !== 'Winter') {
-      for (let n = 0; n < 3; n++) {
-        const x = Math.floor(Math.random() * W), y = Math.floor(Math.random() * H);
-        const i = idx(x, y);
-        if (s.terrain[i] !== T.GRASS || structAt[i] || itemAt.has(i) || s.zones.grow[i] || stockSet.has(i)) continue;
-        if (x >= 4 && x <= 27 && y >= 1 && y <= 16) continue;
-        makeThing(s, 'tree', x, y, { variant: Math.floor(Math.random() * 2), growth: 0.05 });
-        reindex(s);
-        break;
-      }
+    const open = (x, y) => {
+      const i = idx(x, y);
+      return s.terrain[i] === T.GRASS && !structAt[i] && !itemAt.has(i) && !s.zones.grow[i] && !stockSet.has(i) && !(x >= 4 && x <= 27 && y >= 1 && y <= 16);
+    };
+    let planted = 0, fallen = 0;
+    for (let n = 0; n < 30 && (planted < (cal.season === 'Winter' ? 0 : 2) || fallen < 2); n++) {
+      const x = Math.floor(Math.random() * W), y = Math.floor(Math.random() * H);
+      if (!open(x, y)) continue;
+      if (planted < (cal.season === 'Winter' ? 0 : 2)) { makeThing(s, 'tree', x, y, { variant: Math.floor(Math.random() * 2), growth: 0.05 }); reindex(s); planted++; }
+      else { dropItem(s, 'wood', 3 + Math.floor(Math.random() * 4), x, y); fallen++; }
     }
   }
 
@@ -1397,8 +1403,8 @@ window.MMTI = window.MMTI || {};
       letter(s, { kind: 'threat', title: 'Food is running low', body: 'There is less than about a day of food left. Pick berries, harvest the fields, or cook what is left.' });
       s.warn.lowFoodAt = s.t + 36;
     }
-    if (cnt.wood < 10 && s.t >= (s.warn.lowWoodAt || 0)) {
-      letter(s, { kind: 'threat', title: 'Wood is running low', body: 'Fires and heaters need wood to keep burning. Mark trees to chop.' });
+    if (cnt.wood < 15 && s.t >= (s.warn.lowWoodAt || 0)) {
+      letter(s, { kind: 'threat', title: 'Wood is running low', body: 'Fires and heaters need wood to keep burning. Colonists chop trees you mark, and haul in fallen branches on their own.', actions: [{ label: 'Mark 6 trees to chop', cmd: { type: 'auto-chop', n: 6 } }] });
       s.warn.lowWoodAt = s.t + 36;
     }
   }
@@ -1424,7 +1430,7 @@ window.MMTI = window.MMTI || {};
   }
 
   function bodyStep(s, c, dt) {
-    const bleed = c.injuries.reduce((a, i) => a + (i.tended ? 0 : i.bleed), 0);
+    const bleed = c.injuries.reduce((a, i) => a + (i.tended ? 0 : i.bleed), 0) * (c.downed ? 0.5 : 1);
     if (bleed > 0) c.blood = Math.max(0, c.blood - bleed * dt);
     else c.blood = Math.min(1, c.blood + dt * 0.03);
     const resting = c.sleeping || c.downed;
@@ -1517,7 +1523,9 @@ window.MMTI = window.MMTI || {};
     const exposed = s.colonists.filter((c) => !c.away && !c.downed);
     for (const r of s.raiders) {
       if (r.hp <= 0) continue;
-      shoot(r, exposed, (c) => { const sev = rand(0.08, 0.18); injure(s, c, 'Arrow wound', sev, sev * 0.45); s.raid.wounded = (s.raid.wounded || 0) + 1; }, 7);
+      // Raiders fire at anyone armed within range, but only at unarmed colonists who come close.
+      const targets = exposed.filter((c) => c.drafted || Math.hypot(c.x - r.x, c.y - r.y) <= 4);
+      shoot(r, targets, (c) => { const sev = rand(0.08, 0.18); injure(s, c, 'Arrow wound', sev, sev * 0.45); s.raid.wounded = (s.raid.wounded || 0) + 1; }, 7);
     }
   }
 
@@ -1588,6 +1596,11 @@ window.MMTI = window.MMTI || {};
   function raidTick(s, dt) {
     const raid = s.raid;
     if (!raid) return;
+    // Call everyone in shortly before the raiders arrive.
+    if (!raid.calledIn && s.t >= raid.arriveAt - 0.5) {
+      raid.calledIn = true;
+      for (const c of s.colonists) if (!c.away && !c.drafted && !c.downed) endJob(s, c);
+    }
     if (!raid.spawned) {
       if (s.t < raid.arriveAt) return;
       raid.spawned = true;
@@ -1805,7 +1818,7 @@ window.MMTI = window.MMTI || {};
     const cal = calendar(s.t);
     const kind = cal.season === 'Fall' || cal.season === 'Winter' ? 'food' : pick(['food', 'wood']);
     const amount = kind === 'food' ? 30 : 40;
-    w.request = { id: s.nextId++, kind, amount, t: s.t, until: s.t + 24 };
+    w.request = { id: s.nextId++, kind, amount, t: s.t, until: s.t + 36 };
     letter(s, {
       kind: 'quest', title: `${NEIGHBOR} asks for help`, forRequest: w.request.id,
       body: `${NEIGHBOR} is short of ${kind} and asks for ${amount}${kind === 'food' ? ' food (a meal counts as 3)' : ' wood'}. A runner would carry it today.\n\nYou have ${kind === 'food' ? `${rawFood(cnt) + cnt.meal * 3 + cnt.preserved} food` : `${cnt.wood} wood`} now. How ${NEIGHBOR} feels about you affects trade prices, warnings about raids, and whether they help when you are in trouble.`,
@@ -1827,7 +1840,7 @@ window.MMTI = window.MMTI || {};
         goodwill: s.world.goodwill, giftsReceived: s.world.giftsReceived || 0,
       }, s);
     }
-    for (const l of s.letters) if (l.forRequest === r.id) { delete l.actions; l.read = true; }
+    closeLetters(s, (l) => l.forRequest === r.id, expired ? 'This request expired before you answered.' : accept ? 'You sent it.' : 'You refused.');
     s.world.request = null;
     if (accept) {
       if (r.kind === 'food') {
@@ -2053,7 +2066,7 @@ window.MMTI = window.MMTI || {};
     obs('episodeEnd', inc, { how, resolvedAt: r2(s.t), froze: inc.frozeAt != null, frozeAt: inc.frozeAt != null ? r2(inc.frozeAt) : null });
     if (how === 'warm') letter(s, { kind: 'good', title: 'The bedroom is warm again', body: inc.frozeAt != null ? 'Heat is back, though the room froze for a while first.' : 'Heat came back before the room froze.' });
     s.incident = null;
-    s.story.nextAt = s.t + rand(10, 16);
+    s.story.nextAt = s.t + rand(14, 22);
   }
 
   function caravanCandidates(s) {
@@ -2082,7 +2095,7 @@ window.MMTI = window.MMTI || {};
 
   function caravanTick(s, inc, dt) {
     if (inc.stage === 'request') {
-      if (s.t >= inc.requestT + 8) declineCaravan(s, inc, true);
+      if (s.t >= inc.requestT + 16) declineCaravan(s, inc, true);
       return;
     }
     const cv = s.caravan;
@@ -2193,7 +2206,7 @@ window.MMTI = window.MMTI || {};
     }
     s.caravan = null;
     s.incident = null;
-    s.story.nextAt = s.t + rand(10, 16);
+    s.story.nextAt = s.t + rand(14, 22);
   }
 
   function logRescueRequest(s, inc, accept, expired) {
@@ -2202,11 +2215,12 @@ window.MMTI = window.MMTI || {};
   }
   function declineCaravan(s, inc, expired) {
     logRescueRequest(s, inc, false, expired);
+    closeLetters(s, (l) => l.forIncident === inc.id, expired ? 'This request expired before you answered.' : 'You declined.');
     goodwill(s, -8, expired ? `The colony ignored a call for help from ${inc.traveler.name}` : `The colony turned ${inc.traveler.name} away`);
     for (const c of home(s)) addMemory(s, c, 'turnedaway', expired ? `Ignored ${inc.traveler.name}’s call for help` : `Turned ${inc.traveler.name} away`, has(c, 'kind') ? -10 : -3, 48);
     letter(s, { kind: 'info', title: expired ? 'The request expired' : 'Request declined', body: `${inc.traveler.name} will have to manage without the colony.` });
     s.incident = null;
-    s.story.nextAt = s.t + rand(6, 10);
+    s.story.nextAt = s.t + rand(14, 20);
   }
 
   function caravanAlternatives(s, inc) {
@@ -2234,12 +2248,25 @@ window.MMTI = window.MMTI || {};
   function consult(s, inc, via) { if (inc && inc.reportIn) obs('consulted', inc, via); }
 
   // ---------- letters ----------
+  const IMPORTANT = /raiders|fire!|is down|has died|broke down|road is blocked|freezing|fallen|starving|running low|asks|needs help|report|who should go/i;
   function letter(s, l) {
-    s.letters.push({ id: s.nextId++, t: s.t, read: false, ...l });
-    while (s.letters.length > 14) {
-      const i = s.letters.findIndex((x) => x.read && !x.actions);
-      s.letters.splice(i >= 0 ? i : 0, 1);
+    const important = l.important != null ? l.important : !!(l.actions || l.reportFor || l.forIntro || l.kind === 'quest' || IMPORTANT.test(l.title));
+    s.letters.push({ id: s.nextId++, t: s.t, read: false, ...l, important });
+    while (s.letters.length > 12) {
+      let i = s.letters.findIndex((x) => !x.actions && (x.read || !x.important));
+      if (i < 0) i = s.letters.findIndex((x) => !x.actions);
+      if (i < 0) break;
+      archiveLetter(s, i);
     }
+  }
+  function archiveLetter(s, i) {
+    const [l] = s.letters.splice(i, 1);
+    s.letterLog = s.letterLog || [];
+    s.letterLog.push(l);
+    if (s.letterLog.length > 80) s.letterLog.shift();
+  }
+  function closeLetters(s, pred, note) {
+    for (const l of s.letters.concat(s.letterLog || [])) if (pred(l)) { delete l.actions; l.read = true; l.closed = note; }
   }
 
   // ---------- the one command path ----------
@@ -2356,8 +2383,17 @@ window.MMTI = window.MMTI || {};
       case 'dismiss-letter': {
         const i = s.letters.findIndex((x) => x.id === cmd.id);
         if (i < 0 || s.letters[i].actions) return fail();
-        s.letters.splice(i, 1);
+        archiveLetter(s, i);
         return ok();
+      }
+      case 'auto-chop': {
+        const hub = s.zones.stock.length ? [s.zones.stock[0] % W, (s.zones.stock[0] / W) | 0] : [W / 2, H / 2];
+        const trees = s.things.filter((th) => th.type === 'tree' && th.des !== 'chop' && (th.growth == null || th.growth >= 0.5))
+          .sort((a, b) => Math.hypot(a.x - hub[0], a.y - hub[1]) - Math.hypot(b.x - hub[0], b.y - hub[1])).slice(0, cmd.n || 6);
+        if (!trees.length) return fail('No trees are big enough to chop yet');
+        for (const th of trees) th.des = 'chop';
+        unlock(s, ['chop', 'cancel']);
+        return ok({ note: `Marked ${trees.length} trees to chop.` });
       }
       case 'inspect': {
         const tg = cmd.target || {};
@@ -2431,7 +2467,7 @@ window.MMTI = window.MMTI || {};
             goodwill: s.world.goodwill, giftsReceived: 0,
           }, s);
         }
-        for (const l of s.letters) if (l.forIntro === 'request') { delete l.actions; l.read = true; }
+        closeLetters(s, (l) => l.forIntro === 'request', cmd.accept ? 'You agreed to send two meals.' : 'You said not this time.');
         if (!cmd.accept) goodwill(s, -4, `The colony could not spare meals for ${NEIGHBOR}`);
         it.stage = 'errand';
         letter(s, {
@@ -2461,7 +2497,7 @@ window.MMTI = window.MMTI || {};
         it.courier = c.id;
         it.returnAt = s.t + errandHours(c);
         it.stage = 'errand-out';
-        for (const l of s.letters) if (l.forIntro === 'errand') { delete l.actions; l.read = true; }
+        closeLetters(s, (l) => l.forIntro === 'errand', `You sent ${c.name}.`);
         letter(s, { kind: 'info', title: `${c.name} set off`, body: `${c.name} is walking to ${NEIGHBOR}${it.accepted ? ' with two meals' : ''}. Back in about ${Math.round(errandHours(c) * 60)} minutes.` });
         return ok();
       }
@@ -2531,13 +2567,12 @@ window.MMTI = window.MMTI || {};
         s.caravan = { members: members.map((c) => c.id), route: ROUTES.start.slice(), seg: 0, prog: 0, status: 'outbound', clear: 0 };
         inc.stage = 'travel';
         logRescueRequest(s, inc, true, false);
-        for (const l of s.letters) if (l.forIncident === inc.id) { delete l.actions; l.read = true; }
+        closeLetters(s, (l) => l.forIncident === inc.id, `You sent ${members.map((c) => c.name).join(' and ')}.`);
         letter(s, { kind: 'info', title: 'The caravan set out', body: `${members.map((c) => c.name).join(' and ')} left along the old road toward ${inc.traveler.name}.`, focus: { world: 'caravan' } });
         return ok();
       }
       case 'caravan-decline': {
         if (!inc || inc.kind !== 'caravan' || inc.stage !== 'request') return fail();
-        for (const l of s.letters) if (l.forIncident === inc.id) { delete l.actions; l.read = true; }
         declineCaravan(s, inc, false);
         return ok();
       }
@@ -2655,7 +2690,12 @@ window.MMTI = window.MMTI || {};
       let left = hours;
       while (left > 1e-9) { const dt = Math.min(STEP, left); step(S, dt); left -= dt; }
     },
-    command(cmd) { return S ? apply(S, cmd) : fail('No colony'); },
+    command(cmd) {
+      if (!S) return fail('No colony');
+      const res = apply(S, cmd);
+      if (res.ok && cmd.letterId != null) closeLetters(S, (l) => l.id === cmd.letterId, res.note || 'Done.');
+      return res;
+    },
     save() {
       if (!S) return;
       S.roomTemps = rooms.filter((r) => !r.outdoors).map((r) => [r.tiles[0], r2(r.temp)]);

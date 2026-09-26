@@ -211,6 +211,7 @@
       un('pick') ? toolButton('harvest', 'Pick berries') : null, un('chop') ? toolButton('chop', 'Chop') : null, un('chop') ? toolButton('cancel', 'Cancel') : null].filter(Boolean));
     const vb = (key, label, fn) => (un(key) ? h('button', { type: 'button', class: 'mm-btn', on: { click: fn } }, label) : null);
     el.viewRow.replaceChildren(...[
+      h('button', { type: 'button', class: 'mm-btn', on: { click: () => openModal('messages') } }, 'Messages'),
       un('world') ? el.viewBtn : null,
       vb('work', 'Work', () => openModal('work')),
       un('research') ? el.researchBtn : null,
@@ -276,7 +277,7 @@
   }
   function order(cmd) {
     const res = M.command(cmd);
-    if (!res.ok && res.reason) toast(res.reason);
+    if (!res.ok) toast(res.reason || 'That is no longer possible');
     lastInspectSig = '';
     return res;
   }
@@ -934,14 +935,27 @@
     }));
   }
 
+  // Minor letters show as banners and fade away on their own; decisions and emergencies stay until dismissed.
+  const MINOR_MS = 9000, READ_MS = 30000;
+  const seenAt = new Map();
   function updateLetters() {
-    const s = S();
-    const sig = s.letters.map((l) => `${l.id}${l.read}${!!l.actions}`).join('|');
+    const s = S(), now = performance.now();
+    const viewing = ui.modal && ui.modal.kind === 'letter' ? ui.modal.arg : null;
+    for (const l of s.letters.slice()) {
+      if (l.actions || l.id === viewing) continue;
+      const key = `${l.id}${l.read}`;
+      if (!seenAt.has(key)) seenAt.set(key, now);
+      const age = now - seenAt.get(key);
+      if ((!l.important && age > MINOR_MS) || (l.important && l.read && age > READ_MS)) M.command({ type: 'dismiss-letter', id: l.id });
+    }
+    const shown = s.letters.slice().reverse();
+    const sig = shown.map((l) => `${l.id}${l.read}${!!l.actions}`).join('|');
     if (sig === lastLetterSig) return;
     lastLetterSig = sig;
-    el.letters.replaceChildren(...s.letters.slice().reverse().map((l) => h('button', {
-      type: 'button', class: `mm-letter is-${l.kind}${l.read ? '' : ' is-new'}`, on: { click: () => openLetter(l.id) },
-    }, l.title)));
+    const top = shown.slice(0, 6);
+    el.letters.replaceChildren(...top.map((l) => h('button', {
+      type: 'button', class: `mm-letter is-${l.kind}${l.read ? '' : ' is-new'}${l.important || l.actions ? '' : ' is-minor'}`, on: { click: () => openLetter(l.id) },
+    }, l.title)), shown.length > top.length ? h('button', { type: 'button', class: 'mm-letter is-more', on: { click: () => openModal('messages') } }, `+${shown.length - top.length} more`) : null);
   }
 
   function updateTop() {
@@ -1310,6 +1324,7 @@
     else if (m.kind === 'menu') node = menuModal();
     else if (m.kind === 'caravan') node = caravanModal(m.arg);
     else if (m.kind === 'research') node = researchModal();
+    else if (m.kind === 'messages') node = messagesModal();
     else if (m.kind === 'errand') node = errandModal(m.arg);
     else if (m.kind === 'trade') node = tradeModal(m.arg);
     else if (m.kind === 'chronicle') node = chronicleModal();
@@ -1317,15 +1332,16 @@
     el.modal.hidden = false;
   }
 
+  const findLetter = (id) => S().letters.find((x) => x.id === id) || (S().letterLog || []).find((x) => x.id === id);
   function openLetter(id) {
     M.command({ type: 'read-letter', id });
     lastLetterSig = '';
     openModal('letter', id);
   }
   function letterModal(id) {
-    const s = S();
-    const l = s.letters.find((x) => x.id === id);
+    const l = findLetter(id);
     if (!l) return modalFrame('Letter', h('p', null, 'This letter is gone.'));
+    const archived = !S().letters.includes(l);
     const actions = (l.actions || []).map((a) => {
       let label = a.label;
       if (a.cmd.type === 'open-errand') {
@@ -1334,14 +1350,15 @@
       if (a.cmd.type === 'caravan-send') {
         return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', disabled: q.eligibleForCaravan().length < 2, on: { click: () => openModal('caravan', { letterId: l.id, picked: [] }) } }, 'Choose who goes');
       }
-      return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', on: { click: () => { const r = order(a.cmd); if (r.ok) closeModal(); } } }, label);
+      return h('button', { type: 'button', class: 'mm-btn mm-btn-primary', on: { click: () => { const r = order({ ...a.cmd, letterId: l.id }); if (r.ok) { if (r.note) toast(r.note); closeModal(); } else renderModal(); } } }, label);
     });
     const jump = l.focus ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { closeModal(); focusOn(l.focus); } } }, l.focus.world ? 'Show on world map' : 'Show') : null;
     return modalFrame(l.title,
       h('p', { class: 'mm-letter-meta' }, clock(l.t)),
       ...l.body.split('\n\n').map((p) => h('p', { class: 'mm-letter-body' }, p)),
+      l.closed ? h('p', { class: 'mm-closed' }, l.closed) : null,
       h('div', { class: 'mm-actions' }, actions, jump,
-        !l.actions ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.command({ type: 'dismiss-letter', id: l.id }); lastLetterSig = ''; closeModal(); } } }, 'Dismiss') : null));
+        !l.actions && !archived ? h('button', { type: 'button', class: 'mm-btn', on: { click: () => { M.command({ type: 'dismiss-letter', id: l.id }); lastLetterSig = ''; closeModal(); } } }, 'Dismiss') : null));
   }
   function tradeModal(arg) {
     const s = S();
@@ -1408,6 +1425,14 @@
       } } }, picked ? `Send ${picked.name}` : 'Choose someone')));
   }
 
+  function messagesModal() {
+    const all = S().letters.concat(S().letterLog || []).slice().sort((a, b) => b.t - a.t || b.id - a.id);
+    return modalFrame('Messages',
+      all.length ? h('ul', { class: 'mm-messages' }, all.map((l) => h('li', null,
+        h('button', { type: 'button', class: `mm-msg is-${l.kind}${l.actions ? ' is-open' : ''}`, on: { click: () => openLetter(l.id) } },
+          h('span', null, clock(l.t)), h('strong', null, l.title), l.actions ? h('em', null, 'Needs an answer') : null)))) : h('p', { class: 'mm-muted' }, 'No messages yet.'));
+  }
+
   function researchModal() {
     const s = S();
     const hasBench = s.things.some((th) => th.type === 'bench' && !th.bp);
@@ -1430,6 +1455,9 @@
 
   function caravanModal(arg) {
     const inc = S().incident;
+    if (!inc || inc.kind !== 'caravan' || inc.stage !== 'request') {
+      return modalFrame('Form a caravan', h('p', null, 'This request is over.'), h('div', { class: 'mm-actions' }, h('button', { type: 'button', class: 'mm-btn', on: { click: closeModal } }, 'Close')));
+    }
     const picked = arg.picked;
     const rows = q.eligibleForCaravan().map((c) => {
       const on = picked.includes(c.id);
